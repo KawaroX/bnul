@@ -70,7 +70,9 @@ class Tests(unittest.TestCase):
         self.assertEqual(imported_token("curl 'https://example' -H 'token: abc'"),'abc')
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ,{'BNUL_CONFIG':tmp+'/auth.json'}):
             save_token('abc')
-            self.assertEqual(Path(tmp+'/auth.json').stat().st_mode & 0o777,0o600)
+            self.assertEqual(json.loads(Path(tmp+'/auth.json').read_text())['token'],'abc')
+            if os.name != 'nt':
+                self.assertEqual(Path(tmp+'/auth.json').stat().st_mode & 0o777,0o600)
 
     def test_stop_mismatch(self):
         with patch('bnul.cli.Client') as cls, patch('sys.stdout',new_callable=io.StringIO):
