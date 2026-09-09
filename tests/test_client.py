@@ -280,3 +280,11 @@ class NowTests(unittest.TestCase):
         with self.assertRaises(Error):query_start(-1,'2999-01-01')
     def test_arbitrary_minutes_not_in_options_rejected(self):
         with self.assertRaises(Error):FakeClient().validate_booking('123','2026-09-09',844,990)
+
+class OutputEncodingTests(unittest.TestCase):
+    def test_help_with_legacy_pipe_encoding(self):
+        import subprocess,sys
+        env=dict(os.environ,PYTHONIOENCODING='cp1252')
+        result=subprocess.run([sys.executable,'-m','bnul','--help'],env=env,capture_output=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertIn('北师大',result.stdout.decode('utf-8'))

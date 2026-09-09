@@ -69,7 +69,7 @@ def read_secret(args):
         if args.file == '-':
             return sys.stdin.read().strip()
         from pathlib import Path
-        return Path(args.file).read_text().strip()
+        return Path(args.file).read_text(encoding="utf-8").strip()
     prompt = '粘贴新鲜官网登录链接（输入隐藏；自动获取请用 bnul auth login）: ' if args.action == 'exchange-link' else '粘贴请求头 token 或 curl（输入隐藏）: '
     return getpass.getpass(prompt).strip()
 
@@ -199,6 +199,10 @@ def run(args):
 
 
 def main(argv=None):
+    # UTF-8 output is stable for Chinese help and JSON, including Windows pipes.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     args = parser().parse_args(argv)
     try:
         data = run(args)
