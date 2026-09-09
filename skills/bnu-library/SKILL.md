@@ -26,16 +26,27 @@ description: 使用 bnul CLI 查询与预约北京师范大学图书馆自习座
 
 从自然语言提取日期、起止时间；“现在”保留 now，不能替换为固定分钟。只有缺少必要时段或表达歧义时才问；不要先要求用户给出座位 ID。未指定位置时使用默认主馆并在答复中说明。用户指定楼馆/楼层/房间时先用 buildings/rooms 解析实际 ID，再传 `--building`、`--floor`、`--room`。不要因默认房间偏好擅自覆盖明确位置要求。
 
-recommend 只读取数据：默认返回 3 个通过实时 starts/ends 校验的候选，最多检查 30 个座位，跨房间轮流检查；可用 --limit/--max-checks 调整。不根据当前 FREE/IN_USE 或 afterFree 单独判断匹配。默认排序是查找顺序，不是最佳舒适度评分。
+recommend 只读取数据：默认返回 5 个通过实时 starts/ends 校验的候选，最多检查 50 个座位；未指定偏好时按服务器房间顺序跨房间轮流检查；可用 --limit/--max-checks 调整。不根据当前 FREE/IN_USE 或 afterFree 单独判断匹配。指定 --room-order 或 --room-sequence 时，按房间优先级逐个区域检查，达到结果/检查上限即停；只有该区域候选查完才进入下一项。顺序中未列出的区域不参与搜索，不静默回退。默认排序是查找顺序，不是最佳舒适度评分。
 
-用简短中文给出 2–3 个返回的候选：位置、座位编号、覆盖时段，以及“该完整时段已通过可选时间校验”。可根据用户偏好在这些候选中推荐一个，但只使用已知事实，不能编造靠窗、插座、安静等座位属性。无额外偏好时说明候选都匹配时段，没有证据证明某个更舒适。保留返回的 roomId/seatId/date/beginMinute/endMinute 供后续执行。
+按用户希望的数量用简短中文给出返回的候选：位置、座位编号、覆盖时段，以及“该完整时段已通过可选时间校验”。可根据用户偏好在这些候选中推荐一个，但只使用已知事实，不能编造靠窗、插座、安静等座位属性。无额外偏好时说明候选都匹配时段，没有证据证明某个更舒适。保留返回的 roomId/seatId/date/beginMinute/endMinute 供后续执行。
 
 recommendations 为空且 searchExhausted=false 时，只能说“已检查的候选中未找到”，可在合理范围增加 max-checks；不能说全馆无座。searchExhausted=true 也仅代表返回的 scope 和候选列表已检查完。接口错误不能解释成无座。不可静默缩短、拆分或取整用户时段；需要调整时给出建议让用户选择。推荐不保证用户账号当前具备预约资格，也不锁定座位。
 
 用户只要求推荐时不执行 book --execute。用户选定并要求预约后重新用 book 校验/提交，沿用 now 标记，不照搬查询时的当前分钟。如果用户本来明确要求“找一个符合条件的并预约”，则在其授权条件内选择后执行，无需重复索取相同授权。
 
+## 房间清单与区域偏好
+
+先用 `bnul --json room-list`（或不带时段的 `bnul --json rooms`）读取当前楼馆的清单。每项有 number、alias（r1 等）、shortName、name、id。--room 支持完整 ID、清单序号、r序号、全名、短名称或唯一匹配片段，例如 `--room '3F自习'`。名称匹配存在歧义时列出候选让用户选，不猜。seats/book/recommend 均支持这些写法，其他楼馆需配合 --building。
+
+序号属于本机该楼馆的持久清单，刷新时不因 API 返回顺序变化而重排，新房间追加、已移除编号不复用。但不同机器/首次建立时间可能不同；不要把本机“4号就是3F自习区”的映射当成全局常量。先查清单，再解释用户给出的序号。清单表示区域身份，不代表该时段有座。
+
+用户给了区域偏好时，直接按清单映射为有序搜索：`--room-order '4,3,2'` 或 `--room-order '3F自习,2F自习'`。也支持 `--room-sequence 432`；每一位一个序号，0 代表第 10 项。`--room-order 10` 是第 10 项，`--room-sequence 10` 则是第 1、10 项；超过10的序号用逗号列表。--room、--room-order、--room-sequence 互斥；序列中的区域也必须符合 --building/--floor。
+
+已有用户偏好时优先使用，不必重新询问同样偏好；没有偏好时使用默认跨区域模式并说明范围。结果因 max-checks 截断时可能尚未检查后续区域，要根据 searchExhausted/stopReason 如实说明；需要继续可以针对余下区域查询，不把首选区域未查完误报为首选无座。不要擅自缩短时段来迎合区域偏好。
+
 ## 查询和选座
 
+- `bnul --json room-list` 返回房间编号与可用名称；`bnul rooms` 不带时段时显示同一清单。
 - `bnul --json buildings` 返回楼馆、楼层和可预约日期。
 - `bnul --json rooms --date tomorrow --start 19:00 --end 21:00` 查询主馆房间；可指定 `--building ID --floor ID --power --windows`。
 - `bnul --json seats --room ID --date tomorrow --start 19:00 --end 21:00` 返回座位；可用 `--label 008` 精确匹配编号。

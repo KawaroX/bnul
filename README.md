@@ -29,7 +29,7 @@ pipx install git+https://github.com/KawaroX/bnul.git
 pipx ensurepath
 ```
 
-重开终端后运行同样的 `bnul` 命令。以上命令适用于 Windows PowerShell、macOS 和 Linux。无需填写 Python 或 CLI 绝对路径。若需要固定版本，将安装 URL 改为 `git+https://github.com/KawaroX/bnul.git@v0.1.0`。
+重开终端后运行同样的 `bnul` 命令。以上命令适用于 Windows PowerShell、macOS 和 Linux。无需填写 Python 或 CLI 绝对路径。若需要固定版本，将安装 URL 改为 `git+https://github.com/KawaroX/bnul.git@v0.3.0`。
 
 Linux 缺少浏览器系统库时执行 `bnul auth install-browser --with-deps`，系统依赖安装可能要求管理员权限。默认使用上述命令安装的 Chromium；也可通过 `BNUL_BROWSER=chrome` 或 `msedge` 使用已安装的 Chrome/Edge。
 
@@ -64,6 +64,25 @@ macOS 使用 Keychain，Windows 使用 Credential Manager，Linux 使用 Secret 
 
 会话文件默认为 `~/.config/bnul/session.json`，用 `BNUL_CONFIG` 可改变位置。设置 `BNUL_TOKEN` 时优先使用该 token，禁用自动恢复以免覆盖指定身份。密码不写入 JSON 或日志。auth clear 不注销学校会话，下次业务命令可能再次自动登录。
 
+## 房间清单与简便选择
+
+```sh
+bnul room-list
+bnul rooms                  # 不带时段：同样显示清单
+bnul --json room-list        # AI/脚本使用
+```
+
+清单提供序号、别名（r1 等）、短名称、全名、ID。`--room` 不再只接受长 ID：
+
+```sh
+bnul --json seats --room '3F自习' --date tomorrow --start 19:00 --end 21:00
+bnul --json recommend --room 4 --date tomorrow --start 19:00 --end 21:00
+```
+
+`4` 是你当前楼馆清单的第 4 项，请先查清单，不把示例序号当成跨机器固定映射。序号持久保存在会话目录旁的 rooms-楼馆ID.json；刷新不重排已知房间，新房间追加，移除房间编号不复用。名称支持全名、去除括号说明的短名、唯一匹配片段；歧义会明确列出候选，不猜测。`--room r4` 等同序号 4，0 可代指第10项。
+
+seats、book、recommend 都支持这些选择方式；其他楼馆加 `--building ID`。原有 rooms --start/--end 的时段查询仍保留，两个时间参数须同时提供。
+
 ## 按自习计划推荐座位
 
 安装 skill 后，可以直接对 AI 说：
@@ -80,7 +99,15 @@ bnul --json recommend --date today --start now --end 22:00
 bnul --json recommend --date tomorrow --start 19:00 --end 21:00 --room 1888096971220160512
 ```
 
-默认查主馆，推荐 3 个候选，跨房间逐座检查，最多校验 30 座；可指定 --building/--floor/--room，以及 --limit/--max-checks（最多 200）。每个候选均校验服务器返回的开始、结束时间，覆盖完整计划时段。输出位置、座位号、理由与校验时间，不使用当前空闲状态代替完整时段校验，也不编造靠窗/插座等属性。
+默认查主馆，推荐 5 个候选，跨房间逐座检查，最多校验 50 座；可指定 --building/--floor/--room，以及 --limit/--max-checks（最多 200）。默认不预设个人区域偏好，跨区域轮流检查。若偏好某些区域，可以指定顺序：
+
+```sh
+bnul --json recommend --date today --start now --end 22:00 --room-order '4,3,2'
+bnul --json recommend --date today --start now --end 22:00 --room-order '3F自习,2F自习'
+bnul --json recommend --date today --start now --end 22:00 --room-sequence 432
+```
+
+指定顺序时严格先查首选区域，该区域候选查完才到下一项，找到足够结果或达到检查上限即停，只查列出的区域。room-sequence 每位代表一个序号，0 表示10；room-order 10 表示第10项，而 room-sequence 10 表示第1、10项。超过10的序号用逗号列表。与 --room 互斥；重复、未知或与楼层范围冲突的区域会报错。每个候选均校验服务器返回的开始、结束时间，覆盖完整计划时段。输出位置、座位号、理由与校验时间，不使用当前空闲状态代替完整时段校验，也不编造靠窗/插座等属性。
 
 若达到检查上限，searchExhausted=false，不能把暂未找到理解为全馆无座。候选仅反映查询时的可选时段，不保证账号资格或稍后仍可预约。推荐命令不创建预约；决定后再运行 book --execute。
 

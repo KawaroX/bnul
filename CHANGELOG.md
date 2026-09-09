@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- Add room-list and bare rooms catalog commands with persistent building-scoped numbers, aliases, short names and IDs.
+- Allow room IDs, numbers, names and unambiguous fragments in seats/book/recommend.
+- Add strict preferred room order and compact digit sequences (0 = 10); default recommendation becomes 5 candidates / 50 checks without a hardcoded personal room preference.
+- Update skill room-choice and now semantics, preserving complete-interval validation.
+
 ## 0.2.0
 
 - Add read-only `recommend` for exact study intervals, including `now`; verify each candidate against server start/end options.

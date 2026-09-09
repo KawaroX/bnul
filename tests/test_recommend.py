@@ -54,3 +54,17 @@ class RecommendTests(unittest.TestCase):
         c=self.client();c.rooms.return_value=[]
         r=recommend(c,'2999-01-01',1140,1260)
         self.assertEqual(r['recommendations'],[]);self.assertTrue(r['searchExhausted'])
+
+class OrderTests(unittest.TestCase):
+    client = RecommendTests.client
+    def test_strict_room_priority(self):
+        c=self.client();r=recommend(c,'2999-01-01',1140,1260,limit=3,room_order=['2','1'])
+        self.assertEqual([s['seatId'] for s in r['recommendations']],['201','202','101'])
+        self.assertEqual(r['scope']['strategy'],'priority')
+    def test_priority_budget_reports_partial(self):
+        c=self.client();c.validate_booking.side_effect=Error('no','TIME_UNAVAILABLE')
+        r=recommend(c,'2999-01-01',1140,1260,limit=1,max_checks=1,room_order=['2','1'])
+        c.validate_booking.assert_called_once_with('201','2999-01-01',1140,1260)
+        self.assertFalse(r['searchExhausted'])
+    def test_priority_missing_or_outside_floor_fails(self):
+        with self.assertRaises(Error):recommend(self.client(),'2999-01-01',1140,1260,room_order=['9'])

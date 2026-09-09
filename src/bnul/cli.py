@@ -42,15 +42,20 @@ def parser():
     a = sub.add_parser('stop', help='结束当前使用；默认仅预览')
     a.add_argument('--execute', action='store_true')
     a.add_argument('--expect-id', type=identifier, help='执行时必须指定预期的当前预约 ID')
+    a = sub.add_parser('room-list', help='列出稳定序号、简称、房间名称和 ID')
+    a.add_argument('--building', type=identifier, default=BUILDING)
     a = sub.add_parser('recommend', help='按完整自习时段推荐座位，只查询，不预约')
     a.add_argument('--date', type=day, default='today')
     a.add_argument('--start', type=start_minute, required=True, help='HH:MM 或 now/现在/-1')
     a.add_argument('--end', type=minute, required=True)
     a.add_argument('--building', type=identifier, default=BUILDING)
     a.add_argument('--floor', type=identifier, default='0')
-    a.add_argument('--room', type=identifier)
-    a.add_argument('--limit', type=int, default=3, help='推荐数量，默认 3，最多 20')
-    a.add_argument('--max-checks', type=int, default=30, help='最多逐座校验数量，默认 30，最多 200')
+    group = a.add_mutually_exclusive_group()
+    group.add_argument('--room', help='房间 ID、清单序号、名称或唯一缩写')
+    group.add_argument('--room-order', help='依次搜索指定房间，例如 4,3,2 或 3F自习,2F自习')
+    group.add_argument('--room-sequence', help='紧凑序号顺序，例如 432；0 表示第 10 项')
+    a.add_argument('--limit', type=int, default=5, help='推荐数量，默认 5，最多 20')
+    a.add_argument('--max-checks', type=int, default=50, help='最多逐座校验数量，默认 50，最多 200')
     for name in ('rooms', 'seats', 'times', 'book'):
         a = sub.add_parser(name)
         a.add_argument('--date', type=day, default='today')
@@ -60,14 +65,15 @@ def parser():
             a.add_argument('--power', action='store_true')
             a.add_argument('--windows', action='store_true')
         if name in ('seats', 'book'):
-            a.add_argument('--room', type=identifier, default=ROOM)
+            a.add_argument('--room', default=ROOM, help='房间 ID、序号、名称或唯一缩写')
+            a.add_argument('--building', type=identifier, default=BUILDING)
         if name == 'seats':
             a.add_argument('--label', help='保留前导零，例如 008')
         if name in ('times', 'book'):
             a.add_argument('--seat', type=identifier, required=True)
-        a.add_argument('--start', type=start_minute, help='HH:MM 或 now/现在/-1（现在）', required=name in ('rooms', 'seats', 'book'))
+        a.add_argument('--start', type=start_minute, help='HH:MM 或 now/现在/-1（现在）', required=name in ('seats', 'book'))
         if name != 'times':
-            a.add_argument('--end', type=minute, required=True)
+            a.add_argument('--end', type=minute, required=name != 'rooms')
         if name == 'book':
             a.add_argument('--execute', action='store_true', help='实际提交一次预约')
     return p
@@ -153,7 +159,9 @@ def run(args):
                 raise Error('登录链接兑换失败；服务端返回：' + str(exc).replace(token, '[REDACTED]') + '。具体原因尚未确认；常规登录请用 bnul auth login', exc.code) from None
             save_token(data['token'])
             return {'saved': True, 'path': str(config_path())}
-    if hasattr(args, 'end') and query_start(args.start, args.date) >= args.end:
+    if args.command == 'rooms' and (args.start is None) != (args.end is None):
+        raise Error('rooms 的 --start 和 --end 必须一起提供；不提供时显示房间清单')
+    if hasattr(args, 'end') and args.end is not None and query_start(args.start, args.date) >= args.end:
         raise Error('结束时间必须晚于开始时间，且不可跨天')
     c = Client(no_proxy=args.no_proxy)
     c.bootstrap()
@@ -167,10 +175,19 @@ def run(args):
         path = {'current': 'user/currentUseMake', 'recent': 'user/lastMake',
                 'life': 'user/makeLife/' + getattr(args, 'make_id', '')}[args.command]
         return c.api(path)
+    if args.command == 'room-list' or (args.command == 'rooms' and args.start is None):
+        from .rooms import room_catalog
+        result = room_catalog(c, args.building, refresh=True)
+        return {**result, 'rooms': [r for r in result['rooms'] if r['active']]}
+    if args.command in ('seats', 'book', 'recommend') and args.room:
+        from .rooms import room_selector
+        args.room = room_selector(c, args.building, args.room)
     if args.command == 'recommend':
+        from .rooms import ordered_rooms
+        order = ordered_rooms(c, args.building, args.room_order, args.room_sequence) if args.room_order is not None or args.room_sequence is not None else None
         from .recommend import recommend
         return recommend(c, args.date, args.start, args.end, args.building, args.room,
-                         args.floor, args.limit, args.max_checks)
+                         args.floor, args.limit, args.max_checks, order)
     if args.command == 'rooms':
         return c.rooms(args.building, args.date, args.start, args.end,
                        args.floor, args.power, args.windows)
@@ -212,6 +229,11 @@ def main(argv=None):
         data = run(args)
         if args.json:
             print(json.dumps({'ok': True, 'data': data}, ensure_ascii=False))
+        elif args.command == 'room-list' or (args.command == 'rooms' and args.start is None):
+            print('序号  别名  简称 / 全名 / ID')
+            for room in data['rooms']:
+                print(f"{room['number']:>2}  {room['alias']}  {room['shortName']} / {room['name']} / {room['id']}")
+            print('序号在本机该楼馆内保留；新增房间追加，已移除编号不复用。0 可代指 10。')
         else:
             print(json.dumps(data, ensure_ascii=False, indent=2))
         return 0
