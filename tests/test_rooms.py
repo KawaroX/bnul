@@ -46,3 +46,13 @@ class RoomTests(unittest.TestCase):
         with patch('sys.stdout',new_callable=__import__('io').StringIO),patch('bnul.cli.Client') as c:
             self.assertEqual(main(['--json','rooms','--start','19:00']),1)
             c.assert_not_called()
+
+class CatalogCliTests(unittest.TestCase):
+    def test_floor_filter_keeps_original_numbers(self):
+        import io
+        from bnul.cli import main
+        data={'rooms':[{'id':'a','number':4,'active':True,'floorId':'3'},
+                       {'id':'b','number':5,'active':True,'floorId':'4'}]}
+        with patch('bnul.cli.Client'),patch('bnul.rooms.room_catalog',return_value=data),patch('sys.stdout',new_callable=io.StringIO) as out:
+            self.assertEqual(main(['--json','rooms','--floor','3']),0)
+            self.assertEqual([r['number'] for r in json.loads(out.getvalue())['data']['rooms']],[4])

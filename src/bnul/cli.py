@@ -177,8 +177,12 @@ def run(args):
         return c.api(path)
     if args.command == 'room-list' or (args.command == 'rooms' and args.start is None):
         from .rooms import room_catalog
+        if args.command == 'rooms' and (args.power or args.windows):
+            raise Error('设施筛选需同时提供 --start 和 --end；room-list 只列区域身份')
         result = room_catalog(c, args.building, refresh=True)
-        return {**result, 'rooms': [r for r in result['rooms'] if r['active']]}
+        floor = getattr(args, 'floor', '0')
+        return {**result, 'rooms': [r for r in result['rooms'] if r['active']
+                                   and (floor == '0' or r['floorId'] == floor)]}
     if args.command in ('seats', 'book', 'recommend') and args.room:
         from .rooms import room_selector
         args.room = room_selector(c, args.building, args.room)
