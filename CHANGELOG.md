@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0
+
+- Add read-only `recommend` for exact study intervals, including `now`; verify each candidate against server start/end options.
+- Search across rooms with explicit building/floor/room scope, bounded checks, and partial-search reporting.
+- Teach the skill to interpret study plans, present candidates and reasons, and reserve only within user authorization.
+
 ## 0.1.0
 
 - Initial CLI release: resources, seats, time options, booking previews and submission, current/recent reservations, lifecycle, stop.

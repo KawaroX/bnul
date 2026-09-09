@@ -181,6 +181,19 @@ class Client:
                 return self.request(FRONT + path, body)
             raise
 
+    def rooms(self, building, date, start, end, floor='0', power=False, windows=False):
+        rows = []
+        for page in range(1, 101):
+            result = self.api(f'res/findRoomDuration/{identifier(building)}/{day(date)}',
+                              {'beginMinute': query_start(start, date), 'endMinute': end, 'minMinute': 0,
+                               'floorId': identifier(floor) if str(floor) != '0' else 0,
+                               'currentPage': page, 'pageSize': 12, 'power': power,
+                               'windows': windows, 'roomType': False, 'sortField': '', 'sortType': ''})
+            rows.extend(result['pageList'])
+            if page >= int(result['totalPage']):
+                return rows
+        raise Error('房间分页超过 100 页，停止查询')
+
     def seats(self, room, date, start, end):
         return self.api(f'res/freeSeatIdsDuration/{identifier(room)}/{day(date)}',
                         {'beginMinute': query_start(start, date), 'endMinute': end, 'minMinute': 0})
@@ -198,9 +211,9 @@ class Client:
             raise Error('结束时间必须晚于开始时间，且不可跨天')
         times = self.times(seat, date, start)
         if ('now' if start == -1 else str(start)) not in {str(row[0]) for row in times['starts']}:
-            raise Error('开始时间不可选，请查看 times 返回的 starts')
+            raise Error('开始时间不可选，请查看 times 返回的 starts', 'TIME_UNAVAILABLE')
         if str(end) not in {str(row[0]) for row in times['ends']}:
-            raise Error('结束时间不可选，请查看 times 返回的 ends')
+            raise Error('结束时间不可选，请查看 times 返回的 ends', 'TIME_UNAVAILABLE')
         return {'seatId': identifier(seat), 'date': day(date), 'beginMinute': start,
                 'endMinute': end, 'validated': True}
 

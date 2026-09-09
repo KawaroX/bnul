@@ -1,6 +1,6 @@
 ---
 name: bnu-library
-description: 使用 bnul CLI 查询与预约北京师范大学图书馆自习座位，选择日期和起止时间，查看当前预约、签到提示与变更记录，或结束使用。
+description: 使用 bnul CLI 查询与预约北京师范大学图书馆自习座位，按自习计划推荐覆盖完整时段的座位，选择日期和起止时间，查看当前预约、签到提示与变更记录，或结束使用。
 ---
 
 使用 PATH 中的 `bnul`。首次用 `bnul --help` 确认命令可用；若不存在，按本文最后的“CLI 缺失时安装”处理。不要假定源码、虚拟环境或用户目录的位置。所有命令支持前置 `--json`，成功输出 `ok/data`，失败输出 `ok/error/code/data` 并返回非零退出码；代理不可用时加前置 `--no-proxy`。
@@ -16,6 +16,23 @@ description: 使用 bnul CLI 查询与预约北京师范大学图书馆自习座
 链接票据 JWT 样例有效期 60 秒，不是保存的 API 会话期限。API 会话期限未知，但无需预知才能按服务器失效码自动恢复。浏览器刷新不证明 URL 票据可兑换，不要将 casToken异常直接归咎于过期或用户操作。不要回显凭据或写入代码/skill。
 
 平台凭据：macOS Keychain、Windows Credential Manager、Linux Secret Service。Linux 无桌面/无 Secret Service 时支持同时注入 BNUL_USERNAME/BNUL_PASSWORD，不写入文件，优先于系统库；不要在聊天收集密码或拼接含密码的命令。默认 Chromium，使用 `bnul auth install-browser` 安装；Linux 可加 `--with-deps`。BNUL_BROWSER 可选 chrome/msedge/chromium。无桌面自动登录遇到验证码仍需可见环境处理。
+
+## 按自习计划推荐
+
+用户说“今天 19 点到 21 点自习，帮我找座位”或“现在到 22 点想去图书馆”，属于推荐请求，先运行：
+
+- `bnul --json recommend --date today --start 19:00 --end 21:00`
+- `bnul --json recommend --date today --start now --end 22:00`
+
+从自然语言提取日期、起止时间；“现在”保留 now，不能替换为固定分钟。只有缺少必要时段或表达歧义时才问；不要先要求用户给出座位 ID。未指定位置时使用默认主馆并在答复中说明。用户指定楼馆/楼层/房间时先用 buildings/rooms 解析实际 ID，再传 `--building`、`--floor`、`--room`。不要因默认房间偏好擅自覆盖明确位置要求。
+
+recommend 只读取数据：默认返回 3 个通过实时 starts/ends 校验的候选，最多检查 30 个座位，跨房间轮流检查；可用 --limit/--max-checks 调整。不根据当前 FREE/IN_USE 或 afterFree 单独判断匹配。默认排序是查找顺序，不是最佳舒适度评分。
+
+用简短中文给出 2–3 个返回的候选：位置、座位编号、覆盖时段，以及“该完整时段已通过可选时间校验”。可根据用户偏好在这些候选中推荐一个，但只使用已知事实，不能编造靠窗、插座、安静等座位属性。无额外偏好时说明候选都匹配时段，没有证据证明某个更舒适。保留返回的 roomId/seatId/date/beginMinute/endMinute 供后续执行。
+
+recommendations 为空且 searchExhausted=false 时，只能说“已检查的候选中未找到”，可在合理范围增加 max-checks；不能说全馆无座。searchExhausted=true 也仅代表返回的 scope 和候选列表已检查完。接口错误不能解释成无座。不可静默缩短、拆分或取整用户时段；需要调整时给出建议让用户选择。推荐不保证用户账号当前具备预约资格，也不锁定座位。
+
+用户只要求推荐时不执行 book --execute。用户选定并要求预约后重新用 book 校验/提交，沿用 now 标记，不照搬查询时的当前分钟。如果用户本来明确要求“找一个符合条件的并预约”，则在其授权条件内选择后执行，无需重复索取相同授权。
 
 ## 查询和选座
 

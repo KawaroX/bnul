@@ -42,6 +42,15 @@ def parser():
     a = sub.add_parser('stop', help='结束当前使用；默认仅预览')
     a.add_argument('--execute', action='store_true')
     a.add_argument('--expect-id', type=identifier, help='执行时必须指定预期的当前预约 ID')
+    a = sub.add_parser('recommend', help='按完整自习时段推荐座位，只查询，不预约')
+    a.add_argument('--date', type=day, default='today')
+    a.add_argument('--start', type=start_minute, required=True, help='HH:MM 或 now/现在/-1')
+    a.add_argument('--end', type=minute, required=True)
+    a.add_argument('--building', type=identifier, default=BUILDING)
+    a.add_argument('--floor', type=identifier, default='0')
+    a.add_argument('--room', type=identifier)
+    a.add_argument('--limit', type=int, default=3, help='推荐数量，默认 3，最多 20')
+    a.add_argument('--max-checks', type=int, default=30, help='最多逐座校验数量，默认 30，最多 200')
     for name in ('rooms', 'seats', 'times', 'book'):
         a = sub.add_parser(name)
         a.add_argument('--date', type=day, default='today')
@@ -158,18 +167,13 @@ def run(args):
         path = {'current': 'user/currentUseMake', 'recent': 'user/lastMake',
                 'life': 'user/makeLife/' + getattr(args, 'make_id', '')}[args.command]
         return c.api(path)
+    if args.command == 'recommend':
+        from .recommend import recommend
+        return recommend(c, args.date, args.start, args.end, args.building, args.room,
+                         args.floor, args.limit, args.max_checks)
     if args.command == 'rooms':
-        rows = []
-        for page in range(1, 101):
-            result = c.api(f'res/findRoomDuration/{args.building}/{args.date}',
-                           {'beginMinute': query_start(args.start, args.date), 'endMinute': args.end, 'minMinute': 0,
-                            'floorId': args.floor if args.floor != '0' else 0,
-                            'currentPage': page, 'pageSize': 12, 'power': args.power,
-                            'windows': args.windows, 'roomType': False, 'sortField': '', 'sortType': ''})
-            rows.extend(result['pageList'])
-            if page >= int(result['totalPage']):
-                return rows
-        raise Error('房间分页超过 100 页，停止查询')
+        return c.rooms(args.building, args.date, args.start, args.end,
+                       args.floor, args.power, args.windows)
     if args.command == 'seats':
         seats = c.seats(args.room, args.date, args.start, args.end)
         rows = list(seats.values())

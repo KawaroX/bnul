@@ -64,6 +64,26 @@ macOS 使用 Keychain，Windows 使用 Credential Manager，Linux 使用 Secret 
 
 会话文件默认为 `~/.config/bnul/session.json`，用 `BNUL_CONFIG` 可改变位置。设置 `BNUL_TOKEN` 时优先使用该 token，禁用自动恢复以免覆盖指定身份。密码不写入 JSON 或日志。auth clear 不注销学校会话，下次业务命令可能再次自动登录。
 
+## 按自习计划推荐座位
+
+安装 skill 后，可以直接对 AI 说：
+
+> 今天晚上 7 点到 9 点想在图书馆自习，帮我推荐几个座位。
+>
+> 我从现在开始到 22 点自习，看看三楼有哪些位置合适。
+
+也可以直接运行：
+
+```sh
+bnul --json recommend --date today --start 19:00 --end 21:00
+bnul --json recommend --date today --start now --end 22:00
+bnul --json recommend --date tomorrow --start 19:00 --end 21:00 --room 1888096971220160512
+```
+
+默认查主馆，推荐 3 个候选，跨房间逐座检查，最多校验 30 座；可指定 --building/--floor/--room，以及 --limit/--max-checks（最多 200）。每个候选均校验服务器返回的开始、结束时间，覆盖完整计划时段。输出位置、座位号、理由与校验时间，不使用当前空闲状态代替完整时段校验，也不编造靠窗/插座等属性。
+
+若达到检查上限，searchExhausted=false，不能把暂未找到理解为全馆无座。候选仅反映查询时的可选时段，不保证账号资格或稍后仍可预约。推荐命令不创建预约；决定后再运行 book --execute。
+
 ## 查询与预约
 
 ```sh
@@ -116,7 +136,7 @@ uv pip install -e .
 uv run python -m unittest discover -s tests -v
 ```
 
-真实查询、签名与时段预览已验证；密码提交、恢复与平台分支有模拟测试。Windows/Linux 尚未实机验证；开发期间未真实预约或结束使用。暂不包含定时抢座、自动续约或地图 UI。
+真实查询、签名与时段预览已验证；密码提交、恢复与平台分支有模拟测试。三平台 CI 覆盖安装和自动化测试；校园账号的 Windows/Linux 登录尚未实机验证；开发期间未真实预约或结束使用。暂不包含定时抢座、自动续约或地图 UI。
 
 协议依据用户提供的抓包与 2026-09-09 官网公开前端。请求签名通过系统配置解密获得，每次请求生成新的 UUID、毫秒时间戳和 HMAC-SHA256，不重放抓包签名。
 
