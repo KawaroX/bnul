@@ -1,0 +1,1 @@
+"""BNU library seat client."""
