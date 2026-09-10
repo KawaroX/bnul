@@ -1,9 +1,19 @@
-"""Persistent building-scoped room numbers and human-readable selectors."""
-import json
-import os
+"""Shared fixed room numbers and human-readable selectors."""
 import re
-import tempfile
-from .client import Error, config_path, day, identifier
+from .client import Error, day, identifier
+
+# Public numbers are permanent; never reuse a removed room's number.
+FIXED_ROOMS = {'1887388460760797184': {
+    '1877586363089522688': 1,
+    '1887370822454185984': 2,
+    '1887410836445696000': 3,
+    '1888096971220160512': 4,
+    '1888143784337838080': 5,
+    '1891313130644017152': 6,
+    '1888818842819465216': 7,
+    '1888163731197759488': 8,
+    '1888125623479668736': 9,
+}}
 
 
 def normalized(value):
@@ -16,49 +26,25 @@ def short_name(name):
 
 def room_catalog(client, building, refresh=False):
     building = identifier(building)
-    path = config_path().parent / f'rooms-{building}.json'
-    old = {'rooms': []}
-    try:
-        old = json.loads(path.read_text(encoding='utf-8'))
-        if old.get('version') != 1 or not isinstance(old.get('rooms'), list):
-            raise ValueError()
-    except FileNotFoundError:
-        pass
-    except (ValueError, TypeError):
-        raise Error(f'房间编号缓存损坏，请检查 {path}；为避免编号误指不会自动重建') from None
-    if not refresh and old.get('updatedDate') == day('today'):
-        return old
+    # refresh remains accepted for callers; local numbering caches are ignored.
     live = client.rooms(building, day('today'), 0, 0)
-    records = {str(r['id']): dict(r, active=False) for r in old['rooms']}
-    number = max((r['number'] for r in old['rooms']), default=0)
+    records = {}
     for info in live:
         rid = str(info['id'])
-        if rid not in records:
-            number += 1
-            records[rid] = {'id': rid, 'number': number}
-        n = records[rid]['number']
-        records[rid].update({'name': info['name'], 'shortName': short_name(info['name']),
-                            'alias': f'r{n}', 'buildingId': building,
+        n = FIXED_ROOMS.get(building, {}).get(rid)
+        records[rid] = {'id': rid, 'number': n,
+                            'name': info['name'], 'shortName': short_name(info['name']),
+                            'alias': f'r{n}' if n is not None else None, 'buildingId': building,
                             'floorId': str(info.get('floorId', '')), 'floorName': info.get('floorName'),
-                            'active': True})
-    result = {'version': 1, 'buildingId': building, 'updatedDate': day('today'),
-              'rooms': sorted(records.values(), key=lambda r: r['number'])}
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temp = tempfile.mkstemp(dir=path.parent, prefix='.rooms-')
-    try:
-        with os.fdopen(fd, 'w', encoding='utf-8') as f:
-            json.dump(result, f, ensure_ascii=False)
-        os.replace(temp, path)
-    finally:
-        if os.path.exists(temp):
-            os.unlink(temp)
-    return result
+                            'active': True}
+    return {'version': 2, 'buildingId': building, 'updatedDate': day('today'),
+            'rooms': sorted(records.values(), key=lambda r: (r['number'] is None, r['number'] or 0, r['id']))}
 
 
 def resolve_room(value, catalog):
     value = value.strip()
     rows = [r for r in catalog['rooms'] if r['active']]
-    # IDs are distinguished from small local indices by exact match first.
+    # IDs are distinguished from fixed numbers by exact match first.
     exact_id = [r for r in rows if r['id'] == value]
     if exact_id:
         return exact_id[0]['id']

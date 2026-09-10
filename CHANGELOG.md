@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1
+
+- Replace machine-local room numbering with shared fixed main-library numbers 1–9, documented in README and skill.
+- Ignore legacy numbering caches; unknown rooms remain selectable by name or ID without automatic numbering.
+- Preserve fixed numbers across server reordering, missing rooms and floor filters.
+
 ## 0.3.0
 
 - Add room-list and bare rooms catalog commands with persistent building-scoped numbers, aliases, short names and IDs.

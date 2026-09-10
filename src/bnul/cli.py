@@ -236,8 +236,8 @@ def main(argv=None):
         elif args.command == 'room-list' or (args.command == 'rooms' and args.start is None):
             print('序号  别名  简称 / 全名 / ID')
             for room in data['rooms']:
-                print(f"{room['number']:>2}  {room['alias']}  {room['shortName']} / {room['name']} / {room['id']}")
-            print('序号在本机该楼馆内保留；新增房间追加，已移除编号不复用。0 可代指 10。')
+                print(f"{room['number'] or '-':>2}  {room['alias'] or '-'}  {room['shortName']} / {room['name']} / {room['id']}")
+            print('编号由代码统一固定，与 README 一致；未编号区域请使用名称或 ID。')
         else:
             print(json.dumps(data, ensure_ascii=False, indent=2))
         return 0

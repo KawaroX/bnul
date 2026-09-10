@@ -9,15 +9,18 @@ from bnul.rooms import room_catalog,resolve_room,ordered_rooms
 
 class RoomTests(unittest.TestCase):
     def test_stable_numbers_across_refresh(self):
-        c=Mock();c.rooms.return_value=[{'id':'101','name':'1F自习区（安静区）'}, {'id':'202','name':'2F自习区'}]
+        c=Mock();c.rooms.return_value=[{'id':'1888096971220160512','name':'3F自习区'}, {'id':'1887370822454185984','name':'2F自习区'}]
         with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'BNUL_CONFIG':tmp+'/session.json'}):
-            first=room_catalog(c,'123',True)
-            self.assertEqual(resolve_room('1',first),'101')
-            c.rooms.return_value=[{'id':'202','name':'2F新名称'}, {'id':'303','name':'3F阅览区'}]
-            updated=room_catalog(c,'123',True)
-            self.assertEqual([(r['id'],r['number'],r['active']) for r in updated['rooms']], [('101',1,False),('202',2,True),('303',3,True)])
-            with self.assertRaises(Error):resolve_room('1',updated)
-            self.assertEqual(resolve_room('2',updated),'202')
+            first=room_catalog(c,'1887388460760797184',True)
+            self.assertEqual(resolve_room('4',first),'1888096971220160512')
+            c.rooms.return_value.reverse()
+            self.assertEqual(first,room_catalog(c,'1887388460760797184'))
+            c.rooms.return_value=[{'id':'1887370822454185984','name':'2F新名称'}, {'id':'303','name':'新增区域'}]
+            updated=room_catalog(c,'1887388460760797184',True)
+            self.assertEqual([r['number'] for r in updated['rooms']], [2,None])
+            with self.assertRaises(Error):resolve_room('4',updated)
+            self.assertEqual(resolve_room('新增',updated),'303')
+            self.assertEqual(list(Path(tmp).iterdir()),[])
     def rows(self):
         return {'rooms':[{'id':'101','number':1,'name':'3F自习区（低声区）','shortName':'3F自习区','active':True},
                          {'id':'202','number':2,'name':'2F自习区（低声区）','shortName':'2F自习区','active':True},
@@ -35,10 +38,18 @@ class RoomTests(unittest.TestCase):
             self.assertEqual(ordered_rooms(None,'123',order='10'),['303'])
             for kwargs in [{'order':'1,r1'},{'sequence':'2a'},{'order':''}]:
                 with self.assertRaises(Error):ordered_rooms(None,'123',**kwargs)
-    def test_corrupt_cache_does_not_reassign_numbers(self):
+    def test_legacy_cache_is_ignored(self):
         with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'BNUL_CONFIG':tmp+'/session.json'}):
-            Path(tmp+'/rooms-123.json').write_text('broken')
-            with self.assertRaises(Error):room_catalog(Mock(),'123',True)
+            path=Path(tmp+'/rooms-1887388460760797184.json')
+            path.write_text('broken')
+            c=Mock();c.rooms.return_value=[{'id':'1888096971220160512','name':'3F自习区'}]
+            self.assertEqual(resolve_room('4',room_catalog(c,'1887388460760797184')),'1888096971220160512')
+            self.assertEqual(path.read_text(),'broken')
+    def test_other_building_has_no_assigned_numbers(self):
+        c=Mock();c.rooms.return_value=[{'id':'1888096971220160512','name':'其他区域'}]
+        catalog=room_catalog(c,'123')
+        self.assertIsNone(catalog['rooms'][0]['number'])
+        with self.assertRaises(Error):resolve_room('4',catalog)
     def test_rooms_without_times_and_partial_times(self):
         from bnul.cli import parser,main
         args=parser().parse_args(['rooms'])

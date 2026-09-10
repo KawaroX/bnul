@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bnul"
-version = "0.3.0"
+version = "0.3.1"
 description = "北京师范大学图书馆座位预约 CLI"
 readme = "README.md"
 license = {text = "MIT"}
