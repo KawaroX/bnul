@@ -1,6 +1,6 @@
 ---
 name: bnu-library
-description: 使用 bnul CLI 查询与预约北京师范大学图书馆自习座位，按自习计划推荐覆盖完整时段的座位，选择日期和起止时间，查看当前预约、签到提示与变更记录，或结束使用。
+description: 使用 bnul CLI 查询与预约北京师范大学图书馆自习座位，按自习计划推荐覆盖完整时段的座位，选择日期和起止时间，查看当前预约、签到提示与变更记录，取消未签到预约或结束使用。
 ---
 
 使用 PATH 中的 `bnul`。首次用 `bnul --help` 确认命令可用；若不存在，按本文最后的“CLI 缺失时安装”处理。不要假定源码、虚拟环境或用户目录的位置。所有命令支持前置 `--json`，成功输出 `ok/data`，失败输出 `ok/error/code/data` 并返回非零退出码；代理不可用时加前置 `--no-proxy`。
@@ -56,15 +56,19 @@ recommendations 为空且 searchExhausted=false 时，只能说“已检查的�
 
 `status` 是当前状态；`afterFree` 不能单独证明完整目标时段可约。即使 IN_USE/AWAY 也可能在未来有可约时段，以实时 starts/ends 校验为准。预约记录中的 14:04 不代表允许任意分钟提交。固定开始/结束时间通常为整点或半点，必须使用实时 starts/ends 中的选项，不自行凑数或静默舍入。用户要求“现在开始”时用 `--date today --start now`（也支持 `--start=-1` 或“现在”），而不是把本机当前分钟填成固定时间。可选列表的 now 对应提交 -1；查询结束时间用当前分钟数，CLI 已分别处理。若服务器没有返回 now，就不能立即预约，不擅自改成未来时段。不要用旧附件判断当前空闲情况。
 
-## 预约与结束
+## 预约、取消与结束
 
 先用 `bnul --json book --room ID --seat ID --date DATE --start HH:MM --end HH:MM` 生成实时校验的预览。实际提交加 `--execute`。用户明确要求预约且已确定座位和时间即可执行；仅询问空位、提供接口样例或开发工具不构成实际预约授权。缺少必要日期、时间或座位选择时先查询可选项。
 
 预约成功后呈现位置、座位、日期、时段、状态以及服务端 message 中的签到要求。RESERVE 是待签到，CHECK_IN 是使用中，AWAY 是暂离，STOP 是已结束。不要根据 showCheckBtn、isSign 或 oneself 单独推断已签到。需要验证码时交由用户在官网完成；不尝试绕过。可通过环境变量 BNUL_CAP_TOKEN 传入正常验证所得 token。
 
-`bnul --json current` 查看当前预约；`recent` 查看最近详情；`life MAKE_ID` 查看变更记录。遇到“已有有效预约”时保留错误中的 ctId，查询 current；不要自动结束原预约。网络失败时写操作结果可能未知，先查询 current/recent，不盲目重试。
+`bnul --json current` 查看当前预约；`recent` 查看最近详情；`history --page 1 --page-size 10` 分页查看预约历史，`breach --page 1 --page-size 10` 分页查看违约记录（返回 list/count，不自行判断违约是否过期）；`life MAKE_ID` 查看变更记录。遇到“已有有效预约”时保留错误中的 ctId，查询 current；不要自动结束原预约。网络失败时写操作结果可能未知，先查询 current/recent，不盲目重试。
 
-结束使用先执行 `bnul --json stop` 得到当前预约。用户授权结束后执行 `bnul --json stop --execute --expect-id MAKE_ID`。服务端 stop 无预约 ID 参数，CLI 的 ID 校验只能缩小竞态窗口；操作期间不要并行更换预约。stop 会主动结束使用，不能当成无副作用的取消预览。
+先查 `current` 判断状态：RESERVE 未签到用 `bnul --json cancel` 预览，执行为 `bnul --json cancel --execute --expect-id MAKE_ID`；CHECK_IN/AWAY 已签到用 `bnul --json stop` 预览，执行为 `bnul --json stop --execute --expect-id MAKE_ID`。两个命令不会自动互相转换，执行需匹配当前预约 ID。沿用用户已有取消/结束授权，不重复索取；仅提供抓包或要求开发功能不构成操作真实预约的授权。
+
+取消成功的数字 data 含义未确认，原样保留，不当成剩余次数或积分；取消时间限制以服务端结果为准。`current` 返回空字符串表示没有当前预约。如果用户要求“结束当前并重约”，按实时状态选择 cancel/stop，成功后重新查询座位和时段再 book；不保证无冷却或一定能重约。写操作报错或超时时先用 current/recent/history/life 核实，不自动重复提交，也不在取消结果不明时继续重约。
+
+服务端 stop 无预约 ID 参数，CLI 的 ID 校验只能缩小竞态窗口；操作期间不要并行更换预约。stop 会主动结束使用，不能当成无副作用的取消预览。
 
 ## CLI 缺失时安装
 

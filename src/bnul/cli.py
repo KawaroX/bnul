@@ -39,9 +39,14 @@ def parser():
         sub.add_parser(name, help='当前预约' if name == 'current' else '最近预约详情')
     a = sub.add_parser('life', help='预约变更记录')
     a.add_argument('make_id', type=identifier)
-    a = sub.add_parser('stop', help='结束当前使用；默认仅预览')
-    a.add_argument('--execute', action='store_true')
-    a.add_argument('--expect-id', type=identifier, help='执行时必须指定预期的当前预约 ID')
+    for name, description in [('stop', '结束已签到的当前使用'), ('cancel', '取消未签到的当前预约')]:
+        a = sub.add_parser(name, help=description + '；默认仅预览')
+        a.add_argument('--execute', action='store_true')
+        a.add_argument('--expect-id', type=identifier, help='执行时必须指定预期的当前预约 ID')
+    for name, description in [('history', '分页查询预约历史'), ('breach', '分页查询违约记录')]:
+        a = sub.add_parser(name, help=description)
+        a.add_argument('--page', type=int, default=1, help='页码，从 1 开始')
+        a.add_argument('--page-size', type=int, default=10, help='每页数量，1–100，默认 10')
     a = sub.add_parser('room-list', help='列出稳定序号、简称、房间名称和 ID')
     a.add_argument('--building', type=identifier, default=BUILDING)
     a = sub.add_parser('recommend', help='按完整自习时段推荐座位，只查询，不预约')
@@ -163,12 +168,16 @@ def run(args):
         raise Error('rooms 的 --start 和 --end 必须一起提供；不提供时显示房间清单')
     if hasattr(args, 'end') and args.end is not None and query_start(args.start, args.date) >= args.end:
         raise Error('结束时间必须晚于开始时间，且不可跨天')
+    if args.command in ('history', 'breach') and (args.page < 1 or not 1 <= args.page_size <= 100):
+        raise Error('page 必须大于 0；page-size 必须在 1–100 之间')
     c = Client(no_proxy=args.no_proxy)
     c.bootstrap()
     if args.command == 'auth':
         c.auto_auth = False
         c.api('user/getUserInfo')
         return {'authenticated': True}
+    if args.command in ('history', 'breach'):
+        return c.api(f'user/{args.command}/{args.page}/{args.page_size}')
     if args.command == 'buildings':
         return c.api('res/buildingFloorDate')
     if args.command in ('current', 'recent', 'life'):
@@ -212,15 +221,25 @@ def run(args):
         plan = c.validate_booking(args.seat, args.date, args.start, args.end)
         plan.update({'roomId': args.room, 'seatLabel': seats[args.seat].get('label'), 'submitted': False})
         return plan
-    if args.command == 'stop':
+    if args.command in ('stop', 'cancel'):
         current = c.api('user/currentUseMake')
         if not isinstance(current, dict) or not current.get('id'):
-            raise Error('没有当前预约可结束')
+            raise Error('没有当前预约可操作', 'NO_CURRENT_RESERVATION')
+        make_id = identifier(str(current['id']))
+        if args.execute and args.expect_id != make_id:
+            raise Error('当前预约 ID 与 --expect-id 不一致，未执行操作', 'RESERVATION_CHANGED')
+        status = current.get('status')
+        if args.command == 'stop' and status == 'RESERVE':
+            raise Error('预约未签到，请使用 cancel 取消预约；stop 仅用于结束使用', 'INVALID_RESERVATION_STATE')
+        if args.command == 'cancel' and status in ('CHECK_IN', 'AWAY'):
+            raise Error('预约已签到，请使用 stop 结束使用；cancel 仅用于未签到预约', 'INVALID_RESERVATION_STATE')
+        allowed = ('RESERVE',) if args.command == 'cancel' else ('CHECK_IN', 'AWAY')
+        if status not in allowed:
+            raise Error('当前预约状态不支持此操作', 'INVALID_RESERVATION_STATE', {'status': status})
         if not args.execute:
-            return {'submitted': False, 'action': 'stop', 'current': current}
-        if args.expect_id != str(current['id']):
-            raise Error('当前预约 ID 与 --expect-id 不一致，未执行结束操作')
-        return c.api('make/stop')
+            return {'submitted': False, 'action': args.command, 'current': current}
+        path = 'make/cancel/' + make_id if args.command == 'cancel' else 'make/stop'
+        return c.api(path)
 
 
 def main(argv=None):

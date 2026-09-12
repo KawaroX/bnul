@@ -149,9 +149,21 @@ bnul --json book --seat 1888111985066872919 --date tomorrow --start 19:00 --end 
 # 实际提交
 bnul --json book --seat 1888111985066872919 --date tomorrow --start 19:00 --end 20:30 --execute
 # 结束使用：先预览，再按实际预约 ID 提交
+bnul --json history --page 1 --page-size 10
+bnul --json breach --page 1 --page-size 10
+
+# 未签到（RESERVE）：取消预约
+bnul --json cancel
+bnul --json cancel --execute --expect-id 预约ID
+
+# 已签到（CHECK_IN / AWAY）：结束使用
 bnul --json stop
 bnul --json stop --execute --expect-id 预约ID
 ```
+
+从 0.3.2 起支持 `cancel`、`history` 和 `breach`。取消和结束均默认预览，执行必须指定匹配的 `--expect-id`；状态不符时提示正确命令，不自动切换操作。`history`/`breach` 保留服务端 `list`/`count`，每次只查询指定的一页；违约是否已过期不由 CLI 推断。
+
+取消成功返回的数字保留原值，含义尚未确认；不解释为积分、剩余次数或可取消次数。取消时间限制由服务端判定，不凭 `cancelMinute` 字段名推导。取消后 `current` 可能返回空字符串，表示没有当前预约。需要重新预约时重新校验可选时段，不保证座位仍可用或一定允许重约。
 
 成功预约不等于签到，按服务端 message 完成签到。RESERVE 是待签到，CHECK_IN 是使用中，AWAY 是暂离，STOP 是结束。工具不自动取消原预约、不绕过验证码。写操作先检查会话；请求提交后若失败不自动重放，应查 current/recent 确认结果。服务端 stop 无 ID 参数，本地 ID 检查无法完全消除并发更换预约的竞态。
 

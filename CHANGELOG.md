@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2
+
+- Add cancel previews and guarded submission for unsigned current reservations; distinguish cancel from stop by reservation status.
+- Add paginated history and breach queries.
+- Document cancellation, uncertain-write reconciliation and rebooking in README and skill.
+
 ## 0.3.1
 
 - Replace machine-local room numbering with shared fixed main-library numbers 1–9, documented in README and skill.
