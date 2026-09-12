@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3
+
+- Add -v / --version to print the installed package version without login or network access.
+
 ## 0.3.2
 
 - Add cancel previews and guarded submission for unsigned current reservations; distinguish cancel from stop by reservation status.

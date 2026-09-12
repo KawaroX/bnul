@@ -5,12 +5,14 @@ import json
 import os
 import re
 import sys
+from importlib.metadata import version
 from urllib.parse import parse_qs, urlparse, quote
 from .client import Client, Error, BUILDING, ROOM, minute, start_minute, query_start, day, identifier, save_token, config_path
 
 
 def parser():
     p = argparse.ArgumentParser(prog='bnul', description='北师大图书馆座位预约；日期按上海时区，写操作默认预览')
+    p.add_argument('-v', '--version', action='version', version='bnul ' + version('bnul'), help='显示已安装版本并退出')
     p.add_argument('--json', action='store_true', help='结构化 JSON 输出（包括错误）')
     p.add_argument('--no-proxy', action='store_true', help='忽略环境代理')
     sub = p.add_subparsers(dest='command', required=True)

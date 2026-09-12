@@ -198,3 +198,5 @@ uv run python -m unittest discover -s tests -v
 ## License
 
 MIT
+
+查看已安装版本：`bnul -v` 或 `bnul --version`。该命令不登录、不访问网络，输出如 `bnul 0.3.3`。
