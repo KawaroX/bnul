@@ -3,7 +3,15 @@ name: bnu-library
 description: 使用 bnul CLI 查询与预约北京师范大学图书馆自习座位，按自习计划推荐覆盖完整时段的座位，选择日期和起止时间，查看当前预约、签到提示与变更记录，取消未签到预约或结束使用。
 ---
 
-使用 PATH 中的 `bnul`。首次用 `bnul --help` 确认命令可用；若不存在，按本文最后的“CLI 缺失时安装”处理。不要假定源码、虚拟环境或用户目录的位置。所有命令支持前置 `--json`，成功输出 `ok/data`，失败输出 `ok/error/code/data` 并返回非零退出码；代理不可用时加前置 `--no-proxy`。
+使用 PATH 中的 `bnul`。首次用 `bnul --help` 确认命令可用；若不存在，按本文最后的“CLI 缺失时安装”处理。不要假定源码、虚拟环境或用户目录的位置。默认输出简洁纯文本，也可前置 `--text`；所有命令支持前置 `--json`，成功输出 `ok/data`，失败输出 `ok/error/code/data` 并返回非零退出码；代理不可用时加前置 `--no-proxy`。
+
+## 命令调用与输出读取
+
+直接运行 `bnul current`、`bnul seats ...` 等即可读取默认文本，无需添加输出参数。文本按命令用途展示主要信息：楼馆和楼层、区域和设施、座位及当前状态、可选时段、推荐结果、预约状态及签到提示。下文示例均使用默认文本；需要完整字段、嵌套详情或程序处理时可自行加前置 `--json`。
+
+文本隐藏空值和内部元数据，不限制本次返回的记录条数，不机械截断字段、深度或长消息，也不附带重复的 JSON 提示。历史按接口分页，推荐保留搜索范围、检查数量和是否查完。文本中的“空闲”和 afterFree 仍不能代替完整时段校验。JSON 保留命令查询范围内的完整结果；显式筛选、分页和推荐搜索范围按命令参数生效。
+
+JSON 可直接作为文本阅读，也可按复杂度和长度使用 Python、jq 等工具解析、筛选或计算，不限制解析工具。大结果可用 `bnul --json ... > result.json` 保存后解析，避免完整内容占满上下文；解析器把 JSON 作为数据读取。是否缩小查询范围应由任务决定，不为节省展示长度丢掉任务需要的数据。
 
 ## 登录
 
@@ -21,8 +29,8 @@ description: 使用 bnul CLI 查询与预约北京师范大学图书馆自习座
 
 用户说“今天 19 点到 21 点自习，帮我找座位”或“现在到 22 点想去图书馆”，属于推荐请求，先运行：
 
-- `bnul --json recommend --date today --start 19:00 --end 21:00`
-- `bnul --json recommend --date today --start now --end 22:00`
+- `bnul recommend --date today --start 19:00 --end 21:00`
+- `bnul recommend --date today --start now --end 22:00`
 
 从自然语言提取日期、起止时间；“现在”保留 now，不能替换为固定分钟。只有缺少必要时段或表达歧义时才问；不要先要求用户给出座位 ID。未指定位置时使用默认主馆并在答复中说明。用户指定楼馆/楼层/房间时先用 buildings/rooms 解析实际 ID，再传 `--building`、`--floor`、`--room`。不要因默认房间偏好擅自覆盖明确位置要求。
 
@@ -36,7 +44,7 @@ recommendations 为空且 searchExhausted=false 时，只能说“已检查的�
 
 ## 房间清单与区域偏好
 
-先用 `bnul --json room-list`（或不带时段的 `bnul --json rooms`）读取当前楼馆的清单。每项有 number、alias（r1 等）、shortName、name、id。--room 支持完整 ID、清单序号、r序号、全名、短名称或唯一匹配片段，例如 `--room '3F自习'`。名称匹配存在歧义时列出候选让用户选，不猜。seats/book/recommend 均支持这些写法，其他楼馆需配合 --building。
+先用 `bnul room-list`（或不带时段的 `bnul rooms`）读取当前楼馆的清单。每项有 number、alias（r1 等）、shortName、name、id。--room 支持完整 ID、清单序号、r序号、全名、短名称或唯一匹配片段，例如 `--room '3F自习'`。名称匹配存在歧义时列出候选让用户选，不猜。seats/book/recommend 均支持这些写法，其他楼馆需配合 --building。
 
 从 0.3.1 起，主馆编号在代码中统一固定，与 README 一致：1=1F师樾厅，2=2F自习区，3=3F多媒体中心，4=3F自习区，5=4F借阅区，6=5F借阅区，7=6F阅览区，8=7F阅览区，9=8F借阅区。可直接解释这些编号，不需要先查本机映射。旧版本机编号缓存已停用；升级时旧偏好需按固定清单核对。实时清单表示区域身份，不代表该时段有座。未知区域或其他未配置楼馆的 number/alias 为 null，使用名称或 ID，不自行编号；主馆目前没有编号10（0）。
 
@@ -46,11 +54,11 @@ recommendations 为空且 searchExhausted=false 时，只能说“已检查的�
 
 ## 查询和选座
 
-- `bnul --json room-list` 返回房间编号与可用名称；`bnul rooms` 不带时段时显示同一清单。
-- `bnul --json buildings` 返回楼馆、楼层和可预约日期。
-- `bnul --json rooms --date tomorrow --start 19:00 --end 21:00` 查询主馆房间；可指定 `--building ID --floor ID --power --windows`。
-- `bnul --json seats --room ID --date tomorrow --start 19:00 --end 21:00` 返回座位；可用 `--label 008` 精确匹配编号。
-- `bnul --json times --seat ID --date tomorrow --start 19:00` 返回时间线、可选开始时间和该开始时间对应的结束时间。
+- `bnul room-list` 返回房间编号与可用名称；`bnul rooms` 不带时段时显示同一清单。
+- `bnul buildings` 返回楼馆、楼层和可预约日期。
+- `bnul rooms --date tomorrow --start 19:00 --end 21:00` 查询主馆房间；可指定 `--building ID --floor ID --power --windows`。
+- `bnul seats --room ID --date tomorrow --start 19:00 --end 21:00` 返回座位；可用 `--label 008` 精确匹配编号。
+- `bnul times --seat ID --date tomorrow --start 19:00` 返回时间线、可选开始时间和该开始时间对应的结束时间。
 
 默认楼馆是主馆 `1887388460760797184`，默认房间是 3F 自习区（低声区、朗读区）`1888096971220160512`。用户曾使用的 008 号座位 ID 为 `1888111985066872919`；这是参考位置，不代表以后预约时默认选择它。日期按 Asia/Shanghai；支持 today、tomorrow、YYYY-MM-DD。座位 ID 与带前导零的编号保持字符串。
 
@@ -58,13 +66,13 @@ recommendations 为空且 searchExhausted=false 时，只能说“已检查的�
 
 ## 预约、取消与结束
 
-先用 `bnul --json book --room ID --seat ID --date DATE --start HH:MM --end HH:MM` 生成实时校验的预览。实际提交加 `--execute`。用户明确要求预约且已确定座位和时间即可执行；仅询问空位、提供接口样例或开发工具不构成实际预约授权。缺少必要日期、时间或座位选择时先查询可选项。
+先用 `bnul book --room ID --seat ID --date DATE --start HH:MM --end HH:MM` 生成实时校验的预览。实际提交加 `--execute`。用户明确要求预约且已确定座位和时间即可执行；仅询问空位、提供接口样例或开发工具不构成实际预约授权。缺少必要日期、时间或座位选择时先查询可选项。
 
 预约成功后呈现位置、座位、日期、时段、状态以及服务端 message 中的签到要求。RESERVE 是待签到，CHECK_IN 是使用中，AWAY 是暂离，STOP 是已结束。不要根据 showCheckBtn、isSign 或 oneself 单独推断已签到。需要验证码时交由用户在官网完成；不尝试绕过。可通过环境变量 BNUL_CAP_TOKEN 传入正常验证所得 token。
 
-`bnul --json current` 查看当前预约；`recent` 查看最近详情；`history --page 1 --page-size 10` 分页查看预约历史，`breach --page 1 --page-size 10` 分页查看违约记录（返回 list/count，不自行判断违约是否过期）；`life MAKE_ID` 查看变更记录。遇到“已有有效预约”时保留错误中的 ctId，查询 current；不要自动结束原预约。网络失败时写操作结果可能未知，先查询 current/recent，不盲目重试。
+`bnul current` 查看当前预约；`recent` 查看最近详情；`history --page 1 --page-size 10` 分页查看预约历史，`breach --page 1 --page-size 10` 分页查看违约记录（返回 list/count，不自行判断违约是否过期）；`life MAKE_ID` 查看变更记录。遇到“已有有效预约”时保留错误中的 ctId，查询 current；不要自动结束原预约。网络失败时写操作结果可能未知，先查询 current/recent，不盲目重试。
 
-先查 `current` 判断状态：RESERVE 未签到用 `bnul --json cancel` 预览，执行为 `bnul --json cancel --execute --expect-id MAKE_ID`；CHECK_IN/AWAY 已签到用 `bnul --json stop` 预览，执行为 `bnul --json stop --execute --expect-id MAKE_ID`。两个命令不会自动互相转换，执行需匹配当前预约 ID。沿用用户已有取消/结束授权，不重复索取；仅提供抓包或要求开发功能不构成操作真实预约的授权。
+先查 `current` 判断状态：RESERVE 未签到用 `bnul cancel` 预览，执行为 `bnul cancel --execute --expect-id MAKE_ID`；CHECK_IN/AWAY 已签到用 `bnul stop` 预览，执行为 `bnul stop --execute --expect-id MAKE_ID`。两个命令不会自动互相转换，执行需匹配当前预约 ID。沿用用户已有取消/结束授权，不重复索取；仅提供抓包或要求开发功能不构成操作真实预约的授权。
 
 取消成功的数字 data 含义未确认，原样保留，不当成剩余次数或积分；取消时间限制以服务端结果为准。`current` 返回空字符串表示没有当前预约。如果用户要求“结束当前并重约”，按实时状态选择 cancel/stop，成功后重新查询座位和时段再 book；不保证无冷却或一定能重约。写操作报错或超时时先用 current/recent/history/life 核实，不自动重复提交，也不在取消结果不明时继续重约。
 

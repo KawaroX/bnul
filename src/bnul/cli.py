@@ -13,7 +13,9 @@ from .client import Client, Error, BUILDING, ROOM, minute, start_minute, query_s
 def parser():
     p = argparse.ArgumentParser(prog='bnul', description='北师大图书馆座位预约；日期按上海时区，写操作默认预览')
     p.add_argument('-v', '--version', action='version', version='bnul ' + version('bnul'), help='显示已安装版本并退出')
-    p.add_argument('--json', action='store_true', help='结构化 JSON 输出（包括错误）')
+    output = p.add_mutually_exclusive_group()
+    output.add_argument('--json', action='store_true', help='完整命令结果的 JSON 输出（包括错误，不做展示性删减）')
+    output.add_argument('--text', action='store_true', help='按命令展示主要信息的纯文本（默认，无需指定）')
     p.add_argument('--no-proxy', action='store_true', help='忽略环境代理')
     sub = p.add_subparsers(dest='command', required=True)
     a = sub.add_parser('login', help='auth login 的兼容别名：浏览器登录')
@@ -254,19 +256,16 @@ def main(argv=None):
         data = run(args)
         if args.json:
             print(json.dumps({'ok': True, 'data': data}, ensure_ascii=False))
-        elif args.command == 'room-list' or (args.command == 'rooms' and args.start is None):
-            print('序号  别名  简称 / 全名 / ID')
-            for room in data['rooms']:
-                print(f"{room['number'] or '-':>2}  {room['alias'] or '-'}  {room['shortName']} / {room['name']} / {room['id']}")
-            print('编号由代码统一固定，与 README 一致；未编号区域请使用名称或 ID。')
         else:
-            print(json.dumps(data, ensure_ascii=False, indent=2))
+            from .output import format_text
+            print(format_text(args, data))
         return 0
     except (Error, ValueError, OSError, KeyError, TypeError) as exc:
         message = str(exc) if isinstance(exc, Error) else '输入或响应格式异常，请检查参数和配置'
         error = {'ok': False, 'error': message}
         if isinstance(exc, Error):
             error.update({'code': exc.code, 'data': exc.data})
-        print(json.dumps(error, ensure_ascii=False) if args.json else message,
+        from .output import format_error
+        print(json.dumps(error, ensure_ascii=False) if args.json else format_error(error),
               file=sys.stdout if args.json else sys.stderr)
         return 1
