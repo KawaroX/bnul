@@ -280,6 +280,109 @@ class NowTests(unittest.TestCase):
         with self.assertRaises(Error):query_start(-1,'2999-01-01')
     def test_arbitrary_minutes_not_in_options_rejected(self):
         with self.assertRaises(Error):FakeClient().validate_booking('123','2026-09-09',844,990)
+    def test_now_matched_as_string_not_integer(self):
+        c=FakeClient()
+        c.times=lambda seat,date,start:{'starts':[['now','现在'],['960','16:00']],'ends':[['990','16:30']]}
+        with patch('bnul.client.query_start',return_value=941):
+            result=c.validate_booking('123','2026-09-09',-1,990)
+        self.assertTrue(result['validated'])
+        self.assertEqual(result['beginMinute'],-1)
+    def test_now_missing_from_starts_rejects(self):
+        c=FakeClient()
+        c.times=lambda seat,date,start:{'starts':[['960','16:00']],'ends':[['990','16:30']]}
+        with patch('bnul.client.query_start',return_value=941):
+            with self.assertRaises(Error) as ctx:
+                c.validate_booking('123','2026-09-09',-1,990)
+            self.assertEqual(ctx.exception.code,'TIME_UNAVAILABLE')
+    def test_now_not_confused_with_numeric_zero(self):
+        c=FakeClient()
+        c.times=lambda seat,date,start:{'starts':[['0','00:00']],'ends':[['60','01:00']]}
+        with patch('bnul.client.query_start',return_value=0):
+            with self.assertRaises(Error):
+                c.validate_booking('123','2026-09-09',-1,60)
+    def test_fixed_start_matched_as_integer_string(self):
+        c=FakeClient()
+        c.times=lambda seat,date,start:{'starts':[['960','16:00']],'ends':[['990','16:30']]}
+        result=c.validate_booking('123','2026-09-09',960,990)
+        self.assertTrue(result['validated'])
+
+
+class ReadRetryTests(unittest.TestCase):
+    def test_read_only_retries_once_on_network_error(self):
+        c = Client('test')
+        c.auto_auth = False
+        calls = [0]
+        def flaky(path, body=None, public=False):
+            calls[0] += 1
+            if calls[0] == 1:
+                raise Error('网络请求失败')
+            return {'id': '123'}
+        with patch.object(c, 'request', side_effect=flaky):
+            result = c.api('user/currentUseMake')
+        self.assertEqual(calls[0], 2)
+        self.assertEqual(result, {'id': '123'})
+
+    def test_read_only_does_not_retry_more_than_once(self):
+        c = Client('test')
+        c.auto_auth = False
+        with patch.object(c, 'request', side_effect=Error('网络请求失败')):
+            with self.assertRaises(Error):
+                c.api('user/currentUseMake')
+
+    def test_write_does_not_retry_on_network_error(self):
+        c = Client('test')
+        c.auto_auth = False
+        calls = [0]
+        def counting(path, body=None, public=False):
+            calls[0] += 1
+            raise Error('网络请求失败')
+        with patch.object(c, 'request', side_effect=counting):
+            with self.assertRaises(Error):
+                c.api('make/freeBook/123/2026-09-09/960/990')
+        self.assertEqual(calls[0], 1)
+
+    def test_auth_error_not_retried_as_network(self):
+        c = Client('test')
+        c.auto_auth = False
+        with patch.object(c, 'request', side_effect=Error('服务器判定登录失效', 20003)):
+            with self.assertRaises(Error) as ctx:
+                c.api('res/findRoomDuration/123/2026-09-09')
+        self.assertEqual(ctx.exception.code, 20003)
+
+
+class RoomsPaginationTests(unittest.TestCase):
+    def test_missing_total_page_returns_first_page(self):
+        c = Client('test')
+        with patch.object(c, 'api', return_value={'pageList': [{'id': '1'}]}) as api:
+            result = c.rooms('123', '2026-09-09', 0, 0)
+            self.assertEqual(len(result), 1)
+            api.assert_called_once()
+
+    def test_zero_total_page_returns_first_page(self):
+        c = Client('test')
+        with patch.object(c, 'api', return_value={'pageList': [{'id': '1'}], 'totalPage': 0}) as api:
+            result = c.rooms('123', '2026-09-09', 0, 0)
+            self.assertEqual(len(result), 1)
+            api.assert_called_once()
+
+    def test_non_numeric_total_page(self):
+        c = Client('test')
+        with patch.object(c, 'api', return_value={'pageList': [], 'totalPage': 'abc'}) as api:
+            result = c.rooms('123', '2026-09-09', 0, 0)
+            self.assertEqual(result, [])
+
+    def test_malformed_response_raises_error(self):
+        c = Client('test')
+        with patch.object(c, 'api', return_value='not a dict'):
+            with self.assertRaises(Error):
+                c.rooms('123', '2026-09-09', 0, 0)
+
+    def test_missing_page_list_raises_error(self):
+        c = Client('test')
+        with patch.object(c, 'api', return_value={'totalPage': 1}):
+            with self.assertRaises(Error):
+                c.rooms('123', '2026-09-09', 0, 0)
+
 
 class OutputEncodingTests(unittest.TestCase):
     def test_help_with_legacy_pipe_encoding(self):

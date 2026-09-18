@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from bnul.cli import main
 from bnul.client import Error
+from bnul.output import table, present
 
 
 class OutputTests(unittest.TestCase):
@@ -174,3 +175,45 @@ class OutputTests(unittest.TestCase):
         self.assertIn('008 | NEW_STATE | 否 | 123', text)
         self.assertNotIn('位置', text)
         self.assertNotIn('空字符串', text)
+
+
+class TableTests(unittest.TestCase):
+    def test_empty_rows_returns_empty_string(self):
+        columns = [('A', lambda r: r.get('a')), ('B', lambda r: r.get('b'))]
+        self.assertEqual(table([], columns), '')
+
+    def test_all_columns_empty_returns_empty_string(self):
+        rows = [{'a': None, 'b': ''}, {'a': None, 'b': None}]
+        columns = [('A', lambda r: r.get('a')), ('B', lambda r: r.get('b'))]
+        self.assertEqual(table(rows, columns), '')
+
+    def test_empty_columns_returns_empty_string(self):
+        rows = [{'a': 1}]
+        self.assertEqual(table(rows, []), '')
+
+    def test_zero_and_false_columns_retained(self):
+        rows = [{'a': 0, 'b': False, 'c': None}]
+        columns = [('A', lambda r: r.get('a')), ('B', lambda r: r.get('b')), ('C', lambda r: r.get('c'))]
+        result = table(rows, columns)
+        self.assertIn('A | B', result)
+        self.assertIn('0 | 否', result)
+        self.assertNotIn('C', result)
+
+    def test_mixed_present_columns(self):
+        rows = [{'x': 'hello', 'y': None}, {'x': None, 'y': 'world'}]
+        columns = [('X', lambda r: r.get('x')), ('Y', lambda r: r.get('y')), ('Z', lambda r: r.get('z'))]
+        result = table(rows, columns)
+        self.assertIn('X | Y', result)
+        self.assertNotIn('Z', result)
+        lines = result.strip().split('\n')
+        self.assertEqual(len(lines), 3)
+
+
+class PresentTests(unittest.TestCase):
+    def test_present_rejects_empty_values(self):
+        for value in [None, '', [], {}]:
+            self.assertFalse(present(value))
+
+    def test_present_accepts_zero_and_false(self):
+        for value in [0, False, 'text', [1], {'a': 1}]:
+            self.assertTrue(present(value))

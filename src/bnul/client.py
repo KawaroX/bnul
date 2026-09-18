@@ -134,8 +134,8 @@ class Client:
         try:
             with self.opener.open(req, timeout=self.timeout) as response:
                 result = json.load(response)
-        except HTTPError as exc:
-            raise Error(f'HTTP {exc.code}；请求未重试。写操作请先查询当前预约确认结果', exc.code) from None
+        except HTTPError as http_exc:
+            raise Error(f'HTTP {http_exc.code}；请求未重试。写操作请先查询当前预约确认结果', http_exc.code) from None
         except (URLError, TimeoutError, socket.timeout, OSError):
             raise Error('网络请求失败；请求未重试。写操作结果可能未知，请先查询当前预约') from None
         except (ValueError, UnicodeError):
@@ -179,6 +179,13 @@ class Client:
                     and str(exc.code) in ('20003', '401', 'LOCAL_AUTH_MISSING')):
                 self.recover_auth()
                 return self.request(FRONT + path, body)
+            if read_only and exc.code is None and not getattr(exc, '_retried', False):
+                # One automatic retry for transient network errors on read-only requests.
+                try:
+                    return self.request(FRONT + path, body)
+                except Error as retry_exc:
+                    retry_exc._retried = True
+                    raise
             raise
 
     def rooms(self, building, date, start, end, floor='0', power=False, windows=False):
@@ -189,8 +196,14 @@ class Client:
                                'floorId': identifier(floor) if str(floor) != '0' else 0,
                                'currentPage': page, 'pageSize': 12, 'power': power,
                                'windows': windows, 'roomType': False, 'sortField': '', 'sortType': ''})
+            if not isinstance(result, dict) or 'pageList' not in result:
+                raise Error('房间查询返回格式异常', data=result)
             rows.extend(result['pageList'])
-            if page >= int(result['totalPage']):
+            try:
+                total = int(result.get('totalPage', 1))
+            except (ValueError, TypeError):
+                total = 1
+            if page >= max(total, 1):
                 return rows
         raise Error('房间分页超过 100 页，停止查询')
 

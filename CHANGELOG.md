@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.4
+
+- Add task-oriented default text output; JSON mode preserves all fields without display-layer truncation.
+- Retry transient network errors once on read-only requests.
+- Defensive parsing for rooms pagination when the server returns unexpected totalPage values.
+
 ## 0.3.3
 
 - Add -v / --version to print the installed package version without login or network access.
