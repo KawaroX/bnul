@@ -25,7 +25,7 @@ def qr_directory():
 
 def read_status():
     try:
-        data = json.loads((webvpn_profile() / 'login-status.json').read_text())
+        data = json.loads((webvpn_profile() / 'login-status.json').read_text(encoding='utf-8'))
     except FileNotFoundError:
         return {'status': 'not_started'}
     except (OSError, ValueError):
@@ -41,7 +41,7 @@ def write_status(attempt, **data):
     data.update(attempt=attempt, updated_at=time.time())
     fd, tmp = tempfile.mkstemp(prefix='.status-', dir=directory)
     try:
-        with os.fdopen(fd, 'w') as out:
+        with os.fdopen(fd, 'w', encoding='utf-8') as out:
             json.dump(data, out, ensure_ascii=False)
         os.replace(tmp, directory / 'login-status.json')
     finally:
@@ -135,7 +135,7 @@ def start_login(refresh=False):
     attempt = uuid.uuid4().hex
     write_status(attempt, status='starting')
     fd = os.open(str(directory / 'login-worker.log'), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-    with os.fdopen(fd, 'a') as log:
+    with os.fdopen(fd, 'a', encoding='utf-8') as log:
         subprocess.Popen([sys.executable, '-m', 'bnul.webvpn', '--worker', attempt],
                          stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
     for _ in range(40):
@@ -147,6 +147,9 @@ def start_login(refresh=False):
 
 
 def main(argv=None):
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, 'reconfigure'):
+            stream.reconfigure(encoding='utf-8')
     parser = argparse.ArgumentParser(description='北师大学校官方 WebVPN 手机扫码认证')
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--status', action='store_true')

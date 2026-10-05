@@ -22,7 +22,7 @@ def settings():
         except RuntimeError:
             return {}  # optional settings; Windows processes may deliberately clear HOME
     try:
-        value = json.loads(path.read_text())
+        value = json.loads(path.read_text(encoding='utf-8'))
     except FileNotFoundError:
         return {}
     except (OSError, ValueError):

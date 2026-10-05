@@ -88,7 +88,7 @@ def run_vpn():
         path = Path(os.environ['BNUL_VPN_LOG']).expanduser()
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, 'w') as out:
+        with os.fdopen(fd, 'w', encoding='utf-8') as out:
             out.write(clean)
     if any(term in clean.lower() for term in ('invalid username or password', 'authentication failed', 'login failed')):
         print('School rejected authentication; stopped to avoid repeated password attempts.', file=sys.stderr)
