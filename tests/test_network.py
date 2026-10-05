@@ -27,6 +27,10 @@ class NetworkTests(unittest.TestCase):
             build.return_value.open.assert_not_called()
         self.assertEqual(network.mode, 'direct')
 
+    def test_optional_settings_do_not_require_home(self):
+        with patch.dict(os.environ, {}, clear=True), patch('bnul.network.Path.home', side_effect=RuntimeError):
+            self.assertEqual(network_for().mode, 'direct')
+
     def test_auto_probe_carries_no_credentials_and_prefers_direct(self):
         with patch('bnul.network.build_opener') as build:
             build.return_value.open.return_value = io.BytesIO(b'{"status":true}')

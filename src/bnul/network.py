@@ -13,7 +13,14 @@ LIBRARY = 'libseat.bnu.edu.cn'
 
 
 def settings():
-    path = Path(os.environ.get('BNUL_SETTINGS', str(Path.home() / '.config/bnul/settings.json')))
+    configured = os.environ.get('BNUL_SETTINGS')
+    if configured:
+        path = Path(configured).expanduser()
+    else:
+        try:
+            path = Path.home() / '.config/bnul/settings.json'
+        except RuntimeError:
+            return {}  # optional settings; Windows processes may deliberately clear HOME
     try:
         value = json.loads(path.read_text())
     except FileNotFoundError:
@@ -26,8 +33,8 @@ def settings():
 
 
 def webvpn_profile():
-    return Path(os.environ.get('BNUL_WEBVPN_PROFILE', settings().get('webvpn_profile',
-                str(Path.home() / '.config/bnul-webvpn')))).expanduser()
+    configured = os.environ.get('BNUL_WEBVPN_PROFILE') or settings().get('webvpn_profile')
+    return Path(configured).expanduser() if configured else Path.home() / '.config/bnul-webvpn'
 
 
 def route_host(host):

@@ -16,8 +16,11 @@ from .network import VPN, cookiejar, save_cookies, settings, webvpn_profile
 
 
 def qr_directory():
-    default = Path(os.environ.get('HERMES_HOME', str(Path.home() / '.hermes'))) / 'image_cache/bnu-webvpn'
-    return Path(os.environ.get('BNUL_QR_DIR', settings().get('qr_directory', str(default)))).expanduser()
+    configured = os.environ.get('BNUL_QR_DIR') or settings().get('qr_directory')
+    if configured:
+        return Path(configured).expanduser()
+    home = Path(os.environ['HERMES_HOME']).expanduser() if os.environ.get('HERMES_HOME') else Path.home() / '.hermes'
+    return home / 'image_cache/bnu-webvpn'
 
 
 def read_status():
