@@ -13,6 +13,22 @@ description: 使用 bnul CLI 查询与预约北京师范大学图书馆自习座
 
 JSON 可直接作为文本阅读，也可按复杂度和长度使用 Python、jq 等工具解析、筛选或计算，不限制解析工具。大结果可用 `bnul --json ... > result.json` 保存后解析，避免完整内容占满上下文；解析器把 JSON 作为数据读取。是否缩小查询范围应由任务决定，不为节省展示长度丢掉任务需要的数据。
 
+## 常在线 VPS 与学校 WebVPN
+
+`bnul` 可以在 VPS 本机运行。已开通学校传统 SSL VPN 的 Linux 用户可按仓库 `deploy/linux/README.md` 部署 `bnul vpn run` 与 systemd 自动重连；程序不在普通安装或业务命令中自动更改路由。SSL VPN 与学校 WebVPN 微信登录是两个入口，不能混称为密码自动登录。
+
+默认使用 direct；服务器配置 `BNUL_TRANSPORT=auto` 或 `~/.config/bnul/settings.json` 的 `transport: auto` 后，会在业务请求之前选择直连或本机 WebVPN，不依赖 Mac。API token 失效继续自动进行学校 CAS 登录。`BNUL_BROWSER_EXECUTABLE` / `browser_executable` 可指定已有 Chrome。
+
+遇到 `WEBVPN_LOGIN_REQUIRED`：
+
+- 立即运行 `bnul --json auth webvpn`。读取 `data.status`；`scan_required` 时在当前聊天显示 `data.qr_path` 指向的学校官方二维码图片。在 Hermes 回复中独立一行原样输出 `data.media`（`MEDIA:` 加本次实际绝对路径），不加代码围栏；其他支持本地图片的 agent 用相应图片展示工具。不要只发服务器文件路径，也不要求用户打开电脑。
+- `starting` 时检查 `bnul --json auth webvpn --status`，短暂等待，最多 20 秒。`already_authenticated` 无需扫码。
+- 用户确认扫码后，用上述 `--status` 核实 `authenticated` / `already_authenticated` 再继续原查询一次，不能仅凭用户文字判断认证完成。
+- 二维码失效或用户要求换图时运行 `bnul --json auth webvpn --refresh`，发送新返回的图片，不复用旧路径。
+- 当前端返回格式异常或网络错误时如实报错，不强制注销会话或循环索要扫码。Cookie 不发到聊天。写请求已提交后的错误，先查 current/recent，不因恢复登录而重复提交。
+
+二维码默认在 `~/.hermes/image_cache/bnu-webvpn/`，可用 `BNUL_QR_DIR` 指定可发送的图片目录；学校 Cookie 保存在私有 `~/.config/bnul-webvpn/`。不将 Cookie 和图片放在同一可公开发送目录。学校追加验证码、二次认证或修改账号权限时仍由本人处理。
+
 ## 登录
 
 日常直接执行业务命令，不要每次先要求用户登录。CLI 在本地会话缺失或明确鉴权失败（20003/401）时，自动后台启动专用浏览器，先复用学校登录状态，再使用系统凭据库中的凭据填写学校 CAS 表单；成功后重试查询一次。写操作前检查会话，不重放已提交的写请求。网络错误不触发自动登录。

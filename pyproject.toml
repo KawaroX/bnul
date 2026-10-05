@@ -4,18 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bnul"
-version = "0.3.4"
+version = "0.4.0"
 description = "北京师范大学图书馆座位预约 CLI"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.9"
-dependencies = ["cryptography>=39", "playwright>=1.40", "keyring>=25", "tzdata; sys_platform == 'win32'"]
+dependencies = ["cryptography>=39", "playwright>=1.40", "keyring>=25", "python-dotenv>=1", "tzdata; sys_platform == 'win32'"]
 
 [project.optional-dependencies]
 browser = ["playwright>=1.40", "keyring>=25"]
 
 [project.scripts]
 bnul = "bnul.cli:main"
+bnul-vpn-login = "bnul.webvpn:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -27,3 +28,4 @@ Issues = "https://github.com/KawaroX/bnul/issues"
 [tool.setuptools.data-files]
 "share/bnul/skills/bnu-library" = ["skills/bnu-library/SKILL.md"]
 "share/bnul/skills/bnu-library/references" = ["skills/bnu-library/references/installation.md"]
+"share/bnul/deploy/linux" = ["deploy/linux/bnul-sslvpn.service", "deploy/linux/README.md"]

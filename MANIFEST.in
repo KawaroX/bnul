@@ -1,0 +1,2 @@
+recursive-include deploy *.md *.service
+recursive-include tests *.py

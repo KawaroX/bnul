@@ -5,3 +5,5 @@ dist/
 build/
 .env
 *session*.json
+*.py[cod]
+installed-skill/

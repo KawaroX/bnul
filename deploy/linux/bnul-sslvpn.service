@@ -1,0 +1,21 @@
+[Unit]
+Description=BNU library dedicated school SSLVPN
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+# Set ExecStart to the installed bnul absolute path. Optionally use an existing private
+# dotenv file via Environment=BNUL_CREDENTIAL_ENV=/absolute/path/to/existing.env
+EnvironmentFile=-/etc/bnul/sslvpn.env
+ExecStart=/usr/local/bin/bnul vpn run
+Restart=always
+RestartSec=15
+RestartPreventExitStatus=78
+TimeoutStopSec=20
+KillMode=mixed
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -111,12 +111,15 @@ def load_token():
         raise Error('本地登录配置损坏，请重新导入')
 
 class Client:
-    def __init__(self, token=None, no_proxy=False, timeout=20):
+    def __init__(self, token=None, no_proxy=False, timeout=20, network=None):
         self.token, self.timeout = token, timeout
         self.no_proxy = no_proxy
         self.auto_auth = token is None and not os.environ.get('BNUL_TOKEN')
         self.auth_recovered = False
-        self.opener = build_opener(NoRedirect(), *([ProxyHandler({})] if no_proxy else []))
+        from .network import network_for
+        self.network = network or network_for(no_proxy)
+        self.no_proxy = self.network.no_proxy
+        self.opener = self.network.opener
         self.system = None
         self.key = None
 
@@ -130,7 +133,7 @@ class Client:
             headers.update(signed_headers(self.key))
         if not public:
             headers['token'] = self.token or load_token()
-        req = Request(BASE + path, json.dumps(body if body is not None else {}).encode(), headers, method='POST')
+        req = Request(self.network.base + path, json.dumps(body if body is not None else {}).encode(), headers, method='POST')
         try:
             with self.opener.open(req, timeout=self.timeout) as response:
                 result = json.load(response)
@@ -139,7 +142,10 @@ class Client:
         except (URLError, TimeoutError, socket.timeout, OSError):
             raise Error('网络请求失败；请求未重试。写操作结果可能未知，请先查询当前预约') from None
         except (ValueError, UnicodeError):
-            raise Error('服务器未返回合法 JSON；写操作请先查询当前预约确认结果') from None
+            code = 'WEBVPN_RESPONSE_INVALID' if self.network.mode == 'webvpn' else None
+            raise Error('服务器未返回合法 JSON；写操作请先查询当前预约确认结果', code) from None
+        finally:
+            self.network.save()
         if not isinstance(result, dict):
             raise Error('服务器响应格式异常')
         if result.get('status') is not True:

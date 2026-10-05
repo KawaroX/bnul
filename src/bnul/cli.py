@@ -17,6 +17,7 @@ def parser():
     output.add_argument('--json', action='store_true', help='完整命令结果的 JSON 输出（包括错误，不做展示性删减）')
     output.add_argument('--text', action='store_true', help='按命令展示主要信息的纯文本（默认，无需指定）')
     p.add_argument('--no-proxy', action='store_true', help='忽略环境代理')
+    p.add_argument('--transport', choices=['direct', 'webvpn', 'auto'], help='直连、学校 WebVPN 或请求前自动选择')
     sub = p.add_subparsers(dest='command', required=True)
     a = sub.add_parser('login', help='auth login 的兼容别名：浏览器登录')
     a.add_argument('--timeout', type=int, default=300, help='等待登录的秒数，默认 300')
@@ -33,8 +34,14 @@ def parser():
     auth.add_parser('forget', help='删除系统凭据存储账号密码，保留现有会话')
     auth.add_parser('status', help='向服务器验证当前保存的会话')
     auth.add_parser('clear', help='仅清除本地 token，保留系统凭据存储/浏览器资料，后续可自动恢复')
+    a = auth.add_parser('webvpn', help='学校 WebVPN 手机二维码认证；会话保存在当前电脑或 VPS')
+    group = a.add_mutually_exclusive_group()
+    group.add_argument('--status', action='store_true', help='读取后台扫码认证状态')
+    group.add_argument('--refresh', action='store_true', help='生成新二维码，替换旧的待确认请求')
     a = auth.add_parser('install-browser', help='安装自动登录使用的 Chromium')
     a.add_argument('--with-deps', action='store_true', help='同时安装 Linux 系统依赖（可能需要管理员权限）')
+    a = sub.add_parser('vpn', help='Linux 专用学校 SSL VPN，使用已有凭据自动重新登录')
+    a.add_argument('action', choices=['run', 'route'], help='run 用于 systemd；route 用于 OpenConnect 钩子')
     a = sub.add_parser('skill', help='安装随 CLI 打包的 agent skill')
     a.add_argument('action', choices=['install'])
     a.add_argument('--dest', help='目标 skill 文件夹；默认安装到 Codex skills')
@@ -123,6 +130,9 @@ def login_link_token(text):
 
 
 def run(args):
+    if args.command == 'vpn':
+        from .sslvpn import run_vpn, configure_routes
+        return run_vpn() if args.action == 'run' else configure_routes()
     if args.command == 'skill':
         from .install import install_skill
         return install_skill(args.dest)
@@ -137,6 +147,12 @@ def run(args):
         from .browser_auth import browser_login
         return browser_login(args.no_proxy, args.timeout)
     if args.command == 'auth':
+        if args.action == 'webvpn':
+            from .webvpn import start_login, read_status
+            result = read_status() if args.status else start_login(args.refresh)
+            if result.get('status') == 'failed':
+                raise Error('学校 WebVPN 登录助手失败', 'WEBVPN_LOGIN_FAILED', result)
+            return result
         if args.action == 'setup':
             from .credentials import store_credentials
             username = input('学校账号: ').strip()
@@ -252,7 +268,10 @@ def main(argv=None):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
     args = parser().parse_args(argv)
+    previous_transport = os.environ.get('BNUL_TRANSPORT')
     try:
+        if args.transport:
+            os.environ['BNUL_TRANSPORT'] = args.transport
         data = run(args)
         if args.json:
             print(json.dumps({'ok': True, 'data': data}, ensure_ascii=False))
@@ -269,3 +288,9 @@ def main(argv=None):
         print(json.dumps(error, ensure_ascii=False) if args.json else format_error(error),
               file=sys.stdout if args.json else sys.stderr)
         return 1
+    finally:
+        if args.transport:
+            if previous_transport is None:
+                os.environ.pop('BNUL_TRANSPORT', None)
+            else:
+                os.environ['BNUL_TRANSPORT'] = previous_transport

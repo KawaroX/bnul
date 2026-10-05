@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0
+
+- Add per-client direct, school WebVPN and pre-request auto transport selection; preserve no-replay guarantees for writes.
+- Add official phone QR login, detached polling, status checks and QR refresh; return native media paths outside credential directories.
+- Support school CAS recovery through authenticated WebVPN and an explicitly configured Chrome executable.
+- Add opt-in Linux OpenConnect/systemd deployment with account-password reconnect and routes restricted to library and CAS hosts.
+- Update the bundled bnu-library skill to show the QR image in the current chat and resume verified queries after authentication.
+
 ## 0.3.4
 
 - Add task-oriented default text output; JSON mode preserves all fields without display-layer truncation.

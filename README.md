@@ -64,6 +64,23 @@ macOS 使用 Keychain，Windows 使用 Credential Manager，Linux 使用 Secret 
 
 会话文件默认为 `~/.config/bnul/session.json`，用 `BNUL_CONFIG` 可改变位置。设置 `BNUL_TOKEN` 时优先使用该 token，禁用自动恢复以免覆盖指定身份。密码不写入 JSON 或日志。auth clear 不注销学校会话，下次业务命令可能再次自动登录。
 
+## 常在线 VPS 和校外网络
+
+Linux 无桌面服务器可使用学校官方 SSL VPN 账号密码登录并由 systemd 自动重连，且只将选座与 CAS 两个学校域名通过该连接。服务需要学校单独开通和系统管理员部署，安装 CLI 不会自动改变网络。配置、服务模板和验证步骤见 [Linux 部署](deploy/linux/README.md)。
+
+另支持学校官方 WebVPN 微信认证，登录会话与浏览器保存在运行 bnul 的当前电脑或 VPS：
+
+```sh
+bnul --json auth webvpn            # 返回二维码路径及 MEDIA 行，后台等待本人确认
+bnul --json auth webvpn --status   # 确认 authenticated / already_authenticated
+bnul --json auth webvpn --refresh  # 旧二维码过期时换新图
+bnul --transport webvpn current
+```
+
+默认 `direct` 保持原有行为。`--transport auto` / `BNUL_TRANSPORT=auto` 在业务请求前无凭据检测直连，不通时使用本机 WebVPN；不会在结果未知的写请求之后切换连接并重放。`bnul-vpn-login` 是扫码助手的兼容入口，输出原始状态 JSON。WebVPN 本身的微信登录不冒充为密码自动登录；有权限的 SSL VPN 连接及选座 CAS 会话使用账号密码自动恢复。
+
+可在 `~/.config/bnul/settings.json` 配置 `transport`、`browser_executable`、`webvpn_profile`、`qr_directory`；对应环境变量分别是 `BNUL_TRANSPORT`、`BNUL_BROWSER_EXECUTABLE`、`BNUL_WEBVPN_PROFILE`、`BNUL_QR_DIR`，环境变量优先。`BNUL_SETTINGS` 可指定设置文件。已有独立 Chrome 可以直接复用可执行文件，不读取个人浏览器资料。
+
 ## 房间清单与简便选择
 
 ```sh
