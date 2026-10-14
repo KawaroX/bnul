@@ -191,9 +191,10 @@ def run(args):
     if args.command in ('history', 'breach') and (args.page < 1 or not 1 <= args.page_size <= 100):
         raise Error('page 必须大于 0；page-size 必须在 1–100 之间')
     c = Client(no_proxy=args.no_proxy)
-    c.bootstrap()
     if args.command == 'auth':
         c.auto_auth = False
+    c.bootstrap()
+    if args.command == 'auth':
         c.api('user/getUserInfo')
         return {'authenticated': True}
     if args.command in ('history', 'breach'):

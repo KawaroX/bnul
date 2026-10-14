@@ -66,6 +66,9 @@ def identifier(value):
 def signing_key(system):
     from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
     from cryptography.hazmat.primitives.padding import PKCS7
+    if not system.get('hmacKey'):
+        raise Error('学校要求从登录响应获取签名密钥；当前会话缺少密钥，需要重新登录',
+                    'SESSION_SIGNING_KEY_MISSING')
     try:
         decryptor = Cipher(algorithms.AES(system['makePrefix'].encode()),
                            modes.CBC(system['makeSuffix'].encode())).decryptor()
@@ -84,7 +87,7 @@ def signed_headers(key, request_id=None, timestamp=None):
 def config_path():
     return Path(os.environ.get('BNUL_CONFIG', str(Path.home() / '.config/bnul/session.json')))
 
-def save_token(token):
+def save_token(token, session_hmac_key=None):
     if not isinstance(token, str) or not token.strip() or '\n' in token or '\r' in token:
         raise Error('无效 token')
     path = config_path()
@@ -93,7 +96,10 @@ def save_token(token):
     fd, temp = tempfile.mkstemp(dir=path.parent, prefix='.bnul-')
     try:
         with os.fdopen(fd, 'w') as f:
-            json.dump({'token': token.strip()}, f)
+            session = {'token': token.strip()}
+            if session_hmac_key:
+                session['hmacKey'] = session_hmac_key
+            json.dump(session, f)
         os.replace(temp, path)
     finally:
         if os.path.exists(temp):
@@ -110,6 +116,18 @@ def load_token():
     except (KeyError, ValueError):
         raise Error('本地登录配置损坏，请重新导入')
 
+def load_session_hmac_key(token):
+    """A login-issued key belongs only to the token saved alongside it."""
+    try:
+        session = json.loads(config_path().read_text())
+    except (OSError, ValueError):
+        return None
+    if isinstance(session, dict) and session.get('token') == token:
+        value = session.get('hmacKey')
+        return value if isinstance(value, str) and value else None
+    return None
+
+
 class Client:
     def __init__(self, token=None, no_proxy=False, timeout=20, network=None):
         self.token, self.timeout = token, timeout
@@ -122,6 +140,7 @@ class Client:
         self.opener = self.network.opener
         self.system = None
         self.key = None
+        self.session_hmac_key = None
 
     def request(self, path, body=None, public=False):
         if not path.startswith('/static/') or '://' in path:
@@ -157,10 +176,22 @@ class Client:
         return result.get('data')
 
     def bootstrap(self):
+        self.key = None
         self.system = self.request('/static/public/cg/getSysSet/PC', public=True)
         if not isinstance(self.system, dict):
             raise Error('系统配置格式异常')
         if str(self.system.get('hmac')) == '1':
+            if not self.system.get('hmacKey'):
+                try:
+                    token = self.token or load_token()
+                except Error as exc:
+                    if exc.code != 'LOCAL_AUTH_MISSING':
+                        raise
+                    token = None
+                self.system['hmacKey'] = self.session_hmac_key or load_session_hmac_key(token)
+                if not self.system['hmacKey'] and self.auto_auth and not self.auth_recovered:
+                    self.recover_auth()
+                    return self.system
             self.key = signing_key(self.system)
         return self.system
 
@@ -168,7 +199,7 @@ class Client:
         from .browser_auth import browser_login
         import sys
         self.auth_recovered = True  # at most one recovery per client/command
-        print('登录会话失效，正在后台自动恢复…', file=sys.stderr)
+        print('登录会话失效或缺少签名密钥，正在后台自动恢复…', file=sys.stderr)
         browser_login(no_proxy=self.no_proxy, timeout=60, headless=True)
         self.token = load_token()
         self.bootstrap()

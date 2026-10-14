@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1
+
+- Fix queries failing when the public configuration returns an empty `hmacKey`: capture the signing key from the successful login response, decrypt it with the existing algorithm, and persist it with its matching token.
+- Recover legacy sessions that lack a signing key once; preserve explicit-token behavior and keep `auth status` read-only without automatic login.
+- Preserve direct/WebVPN support and compatibility with servers that still supply the key in public configuration.
+- Clarify single-command agent invocation and error handling in the bundled skill; add signing-session regression tests.
+
 ## 0.4.0
 
 - Add per-client direct, school WebVPN and pre-request auto transport selection; preserve no-replay guarantees for writes.

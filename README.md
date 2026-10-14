@@ -64,6 +64,8 @@ macOS 使用 Keychain，Windows 使用 Credential Manager，Linux 使用 Secret 
 
 会话文件默认为 `~/.config/bnul/session.json`，用 `BNUL_CONFIG` 可改变位置。设置 `BNUL_TOKEN` 时优先使用该 token，禁用自动恢复以免覆盖指定身份。密码不写入 JSON 或日志。auth clear 不注销学校会话，下次业务命令可能再次自动登录。
 
+从 0.4.1 起，支持学校将签名密钥改为通过登录响应的 `userInfoRes.hmacKey` 下发。CLI 会将密钥与对应 token 一起保存，仍按原有 AES 算法解密并为每次请求生成签名；不会跳过签名校验。旧会话缺少密钥时，普通查询自动重新登录一次。仅导入 token 或显式设置 `BNUL_TOKEN` 而没有配对密钥时会返回 `SESSION_SIGNING_KEY_MISSING`，请使用正常浏览器登录保存完整会话。
+
 ## 常在线 VPS 和校外网络
 
 Linux 无桌面服务器可使用学校官方 SSL VPN 账号密码登录并由 systemd 自动重连，且只将选座与 CAS 两个学校域名通过该连接。服务需要学校单独开通和系统管理员部署，安装 CLI 不会自动改变网络。配置、服务模板和验证步骤见 [Linux 部署](deploy/linux/README.md)。
