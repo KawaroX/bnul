@@ -334,7 +334,8 @@ def record_result(store, result, now, notify):
         if notify and now.timestamp() - incident['lastNotice'] >= 3600:
             enqueue(store, 'failure:' + incident['id'] + ':' + str(int(now.timestamp() // 3600)),
                     'bnul 监控失败\n时间：' + now.isoformat() + '\n' + result.get('error', signature)
-                    + '\n仍每 120 秒检查；登录恢复失败后按退避间隔重试。请查看 bnul watch --status。', now)
+                    + ('\n独立健康检查仍在运行，请检查服务状态。' if result.get('code') == 'WATCH_HEARTBEAT_STALE'
+                       else '\n仍按配置间隔检查；登录恢复失败后按退避间隔重试。请查看 bnul watch --status。'), now)
             incident['lastNotice'] = now.timestamp()
     else:
         incident = health.pop('incident', None)

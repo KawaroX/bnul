@@ -19,4 +19,3 @@ def env_value(key, fallback=None):
         if value is not None:
             return value
     return fallback
-
