@@ -2,7 +2,7 @@
 Description=Check BNU monitor heartbeat every 120 seconds
 
 [Timer]
-OnBootSec=180
+OnActiveSec=180
 OnUnitActiveSec=120
 AccuracySec=1
 Unit=bnul-watch-health.service
