@@ -28,7 +28,9 @@ def backend():
 
 
 def get_credentials():
-    username, password = os.environ.get('BNUL_USERNAME'), os.environ.get('BNUL_PASSWORD')
+    # Read only the two requested keys from an explicitly selected existing dotenv file.
+    from .env import env_value as setting
+    username, password = setting('BNUL_USERNAME'), setting('BNUL_PASSWORD')
     if username is not None or password is not None:
         if not username or not password:
             raise Error('BNUL_USERNAME 与 BNUL_PASSWORD 必须同时提供非空值', 'CREDENTIALS_UNAVAILABLE')

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bnul"
-version = "0.4.1"
+version = "0.5.0"
 description = "北京师范大学图书馆座位预约 CLI"
 readme = "README.md"
 license = {text = "MIT"}
@@ -28,4 +28,4 @@ Issues = "https://github.com/KawaroX/bnul/issues"
 [tool.setuptools.data-files]
 "share/bnul/skills/bnu-library" = ["skills/bnu-library/SKILL.md"]
 "share/bnul/skills/bnu-library/references" = ["skills/bnu-library/references/installation.md"]
-"share/bnul/deploy/linux" = ["deploy/linux/bnul-sslvpn.service", "deploy/linux/README.md"]
+"share/bnul/deploy/linux" = ["deploy/linux/bnul-sslvpn.service", "deploy/linux/README.md", "deploy/linux/WATCH.md", "deploy/linux/bnul-watch.service", "deploy/linux/bnul-watch-health.service", "deploy/linux/bnul-watch-health.timer"]

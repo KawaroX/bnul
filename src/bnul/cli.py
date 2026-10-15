@@ -45,6 +45,19 @@ def parser():
     a = sub.add_parser('skill', help='安装随 CLI 打包的 agent skill')
     a.add_argument('action', choices=['install'])
     a.add_argument('--dest', help='目标 skill 文件夹；默认安装到 Codex skills')
+    a = sub.add_parser('watch', help='预约临期监控；默认预览，Linux/macOS')
+    a.add_argument('--execute', action='store_true', help='临期取消/结束并尝试重约')
+    mode = a.add_mutually_exclusive_group()
+    mode.add_argument('--once', action='store_true', help='检查一次后退出')
+    mode.add_argument('--status', action='store_true', help='只读本地监控状态和心跳')
+    mode.add_argument('--notify-test', action='store_true', help='发送明确标记的测试通知')
+    mode.add_argument('--health-check', action='store_true', help='独立检测停机或心跳超时并通知')
+    a.add_argument('--state-file', help='持久状态文件，默认会话目录/watch-state.json')
+    a.add_argument('--interval', type=int, default=120, help='检查间隔秒数，默认 120')
+    a.add_argument('--threshold', type=int, default=300, help='严格少于此秒数才操作，默认 300')
+    a.add_argument('--max-renewals', type=int, default=3, help='每日最多尝试重约次数，0–3')
+    a.add_argument('--notify', choices=['none', 'slack'], default='none', help='失败、恢复、操作结果通知')
+    a.add_argument('--max-age', type=int, default=360, help='独立健康检查允许的心跳年龄，秒')
     sub.add_parser('buildings', help='楼馆、楼层和开放预约日期')
     for name in ('current', 'recent'):
         sub.add_parser(name, help='当前预约' if name == 'current' else '最近预约详情')
@@ -130,6 +143,9 @@ def login_link_token(text):
 
 
 def run(args):
+    if args.command == 'watch':
+        from .watch import run_watch
+        return run_watch(args)
     if args.command == 'vpn':
         from .sslvpn import run_vpn, configure_routes
         return run_vpn() if args.action == 'run' else configure_routes()

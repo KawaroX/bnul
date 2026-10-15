@@ -1,0 +1,29 @@
+[Unit]
+Description=BNU library reservation monitor (120 seconds)
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+# Adjust user and installation paths for your host; use the SAME official bnul as your CLI.
+User=ubuntu
+Group=ubuntu
+Environment=HOME=/home/ubuntu
+Environment=BNUL_CONFIG=/home/ubuntu/.config/bnul/session.json
+# Read selected credentials and Slack keys from the existing private file; never copy secrets here.
+Environment=BNUL_CREDENTIAL_ENV=/home/ubuntu/.hermes/.env
+Environment=PYTHONUNBUFFERED=1
+Environment=TZ=Asia/Shanghai
+ExecStart=/home/ubuntu/.local/bin/bnul --no-proxy watch --execute --interval 120 --notify slack
+Restart=always
+RestartSec=15
+WatchdogSec=300
+NotifyAccess=main
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

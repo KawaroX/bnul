@@ -94,7 +94,7 @@ recommendations 为空且 searchExhausted=false 时，只能说“已检查的�
 
 先查 `current` 判断状态：RESERVE 未签到用 `bnul cancel` 预览，执行为 `bnul cancel --execute --expect-id MAKE_ID`；CHECK_IN/AWAY 已签到用 `bnul stop` 预览，执行为 `bnul stop --execute --expect-id MAKE_ID`。两个命令不会自动互相转换，执行需匹配当前预约 ID。沿用用户已有取消/结束授权，不重复索取；仅提供抓包或要求开发功能不构成操作真实预约的授权。
 
-取消成功的数字 data 含义未确认，原样保留，不当成剩余次数或积分；取消时间限制以服务端结果为准。`current` 返回空字符串表示没有当前预约。如果用户要求“结束当前并重约”，按实时状态选择 cancel/stop，成功后重新查询座位和时段再 book；不保证无冷却或一定能重约。写操作报错或超时时先用 current/recent/history/life 核实，不自动重复提交，也不在取消结果不明时继续重约。
+取消成功的数字 data 原样保留；已核实官网前端将其显示为当天剩余取消次数，须知规定每天最多取消 3 次；取消时间限制以服务端结果为准。`current` 返回空字符串表示没有当前预约。如果用户要求“结束当前并重约”，按实时状态选择 cancel/stop，成功后重新查询座位和时段再 book；不保证无冷却或一定能重约。写操作报错或超时时先用 current/recent/history/life 核实，不自动重复提交，也不在取消结果不明时继续重约。
 
 服务端 stop 无预约 ID 参数，CLI 的 ID 校验只能缩小竞态窗口；操作期间不要并行更换预约。stop 会主动结束使用，不能当成无副作用的取消预览。
 
@@ -105,3 +105,12 @@ recommendations 为空且 searchExhausted=false 时，只能说“已检查的�
 推荐 `uv tool install git+https://github.com/KawaroX/bnul.git`，然后 `uv tool update-shell`。也可用 `pipx install git+https://github.com/KawaroX/bnul.git` 和 `pipx ensurepath`。重开终端/任务使 PATH 生效，验证 `bnul --help`，再运行 `bnul auth install-browser`。安装 skill 用 `bnul skill install`。这些是全局可调用的隔离工具安装，不要求用户提供虚拟环境绝对路径。
 
 需要更详细的安装、PATH 和平台说明时，读取 [安装说明](references/installation.md) 或仓库 README。账号密码只在用户终端通过 `bnul auth setup` 配置，不在聊天中收集。
+
+
+## 预约临期监控（0.5.0）
+
+用户授权监控和自动处理后可用 `bnul watch --execute --interval 120 --notify slack`。默认 `bnul watch` 只观察，`--once` 单次，`--status` 只读本地健康和动作记录。主馆 RESERVE/AWAY 严格在距离截止不足 300 秒时释放并尝试原位重约；CHECK_IN 不处理，结束时间不延长。暂离规则以实时官网须知为准，无法确认就通知而不操作。
+
+保持普通业务命令同一份正式安装，不使用另一份过时代码。Linux 长期运行用随安装包发布的 deploy/linux/WATCH.md 与 systemd 模板；启用服务是实际自动操作，沿用用户已有授权。可用 BNUL_CREDENTIAL_ENV 指向服务器现有私有 dotenv，不因 SSH 进程没加载变量就断言服务器没有凭据；只检查配置与必要键是否可用，不输出秘密。
+
+登录恢复失败会保留退避状态并继续检查；异常、恢复和动作结果通知到明确配置的 Slack 会话，失败队列跨重启重试。独立 timer 检查监控心跳，不能用“进程 active”代替成功查询和实际通知回执。真实取消重约须有授权并记录前后预约 ID，不能通过结束 CHECK_IN 来验收。达到当日重约上限、取消配额为 0/未知时只释放并通知；不重试结果未知的写操作。

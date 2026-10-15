@@ -1,0 +1,17 @@
+[Unit]
+Description=Check BNU monitor heartbeat independently
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+Environment=HOME=/home/ubuntu
+Environment=BNUL_CONFIG=/home/ubuntu/.config/bnul/session.json
+Environment=BNUL_CREDENTIAL_ENV=/home/ubuntu/.hermes/.env
+ExecStart=/home/ubuntu/.local/bin/bnul --no-proxy watch --health-check --max-age 360 --notify slack
+TimeoutStartSec=75
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true

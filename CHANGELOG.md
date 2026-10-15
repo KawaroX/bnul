@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0
+
+- Add opt-in reservation monitoring: check every 120 seconds and handle unsigned/away reservations only when less than five minutes remain; preserve seat and original end time.
+- Keep the 0.4.1 signing-key and direct/WebVPN fixes; recover sessions using existing credentials, persist login backoff, and continue observing instead of exiting silently on authentication failures.
+- Add durable Slack failure/recovery/action notifications with delivery receipts, retry/backoff and deduplication.
+- Journal mutations before submission and reconcile interrupted requests without replay; enforce cancellation limits, state rechecks and captcha preflight.
+- Ship systemd monitor/watchdog and independent heartbeat timer, local status inspection, deployment and acceptance instructions.
+
 ## 0.4.1
 
 - Fix queries failing when the public configuration returns an empty `hmacKey`: capture the signing key from the successful login response, decrypt it with the existing algorithm, and persist it with its matching token.

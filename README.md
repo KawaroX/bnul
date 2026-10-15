@@ -29,9 +29,21 @@ pipx install git+https://github.com/KawaroX/bnul.git
 pipx ensurepath
 ```
 
-重开终端后运行同样的 `bnul` 命令。以上命令适用于 Windows PowerShell、macOS 和 Linux。无需填写 Python 或 CLI 绝对路径。若需要固定版本，将安装 URL 改为 `git+https://github.com/KawaroX/bnul.git@v0.3.0`。
+重开终端后运行同样的 `bnul` 命令。以上命令适用于 Windows PowerShell、macOS 和 Linux。无需填写 Python 或 CLI 绝对路径。若需要固定版本，将安装 URL 改为 `git+https://github.com/KawaroX/bnul.git@v0.5.0`。
 
 Linux 缺少浏览器系统库时执行 `bnul auth install-browser --with-deps`，系统依赖安装可能要求管理员权限。默认使用上述命令安装的 Chromium；也可通过 `BNUL_BROWSER=chrome` 或 `msedge` 使用已安装的 Chrome/Edge。
+
+## 预约临期监控（0.5.0）
+
+`bnul watch` 默认只观察，每 120 秒检查；`--execute --notify slack` 开启临期自动处理和通知。未签到或暂离距离截止不足 5 分钟时，取消/结束后尝试重约原座位至原结束时间，已签到使用中的预约不处理。登录失效自动恢复，失败持久化并通知；通知可重试，写操作结果不明不重复提交。
+
+```sh
+bnul watch --once
+bnul watch --execute --interval 120 --notify slack
+bnul --json watch --status
+```
+
+长期运行请按 [监控部署与验收说明](deploy/linux/WATCH.md) 配置 systemd、现有凭据和独立心跳告警。学校取消次数限制、验证码或座位竞争可能使重约失败，此时会通知；达到当日重约上限时只释放，不重约。
 
 ## 安装 skill
 
@@ -208,9 +220,9 @@ bnul stop --execute --expect-id 预约ID
 
 从 0.3.2 起支持 `cancel`、`history` 和 `breach`。取消和结束均默认预览，执行必须指定匹配的 `--expect-id`；状态不符时提示正确命令，不自动切换操作。`history`/`breach` 保留服务端 `list`/`count`，每次只查询指定的一页；违约是否已过期不由 CLI 推断。
 
-取消成功返回的数字保留原值，含义尚未确认；不解释为积分、剩余次数或可取消次数。取消时间限制由服务端判定，不凭 `cancelMinute` 字段名推导。取消后 `current` 可能返回空字符串，表示没有当前预约。需要重新预约时重新校验可选时段，不保证座位仍可用或一定允许重约。
+取消成功返回的数字保留原值；已核实官网前端将它显示为当天剩余取消次数。取消时间限制由服务端判定，不凭 `cancelMinute` 字段名推导。取消后 `current` 可能返回空字符串，表示没有当前预约。需要重新预约时重新校验可选时段，不保证座位仍可用或一定允许重约。
 
-成功预约不等于签到，按服务端 message 完成签到。RESERVE 是待签到，CHECK_IN 是使用中，AWAY 是暂离，STOP 是结束。工具不自动取消原预约、不绕过验证码。写操作先检查会话；请求提交后若失败不自动重放，应查 current/recent 确认结果。服务端 stop 无 ID 参数，本地 ID 检查无法完全消除并发更换预约的竞态。
+成功预约不等于签到，按服务端 message 完成签到。RESERVE 是待签到，CHECK_IN 是使用中，AWAY 是暂离，STOP 是结束。普通命令不自动取消原预约；显式启用 watch --execute 后按下文规则处理临期预约，不绕过验证码。写操作先检查会话；请求提交后若失败不自动重放，应查 current/recent 确认结果。服务端 stop 无 ID 参数，本地 ID 检查无法完全消除并发更换预约的竞态。
 
 `--json` 输出结构为 `ok/data` 或 `ok/error/code/data`，失败退出码非零。全局参数放在子命令前；系统代理不可用时加 `--no-proxy`，例如 `bnul --no-proxy current`。TLS 校验始终开启。
 
@@ -236,7 +248,7 @@ uv pip install -e .
 uv run python -m unittest discover -s tests -v
 ```
 
-真实查询、签名与时段预览已验证；密码提交、恢复与平台分支有模拟测试。三平台 CI 覆盖安装和自动化测试；校园账号的 Windows/Linux 登录尚未实机验证；开发期间未真实预约或结束使用。暂不包含定时抢座、自动续约或地图 UI。
+三平台 CI 覆盖安装和自动化测试；监控运行支持 Linux/macOS。登录与通知的实机验收、连续检查和真实预约操作须分别记录，单纯启动进程不代表验收通过。暂不包含定时抢座或地图 UI。
 
 协议依据用户提供的抓包与 2026-09-09 官网公开前端。请求签名通过系统配置解密获得，每次请求生成新的 UUID、毫秒时间戳和 HMAC-SHA256，不重放抓包签名。
 

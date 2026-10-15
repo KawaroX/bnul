@@ -267,8 +267,7 @@ class Client:
         return {'seatId': identifier(seat), 'date': day(date), 'beginMinute': start,
                 'endMinute': end, 'validated': True}
 
-    def book(self, seat, date, start, end, cap_token=None):
-        self.validate_booking(seat, date, start, end)
+    def check_booking_captcha(self, cap_token=None):
         mode = self.system.get('mackCaptcha')
         if mode is None:
             raise Error('系统未返回验证码策略，无法安全提交')
@@ -277,5 +276,9 @@ class Client:
             required = bool(self.request('/static/cap/cg/checkHigh'))
         if required and not cap_token:
             raise Error('当前需要验证码，请在官网完成验证后提供 capToken，或在官网预约')
+
+    def book(self, seat, date, start, end, cap_token=None):
+        self.validate_booking(seat, date, start, end)
+        self.check_booking_captcha(cap_token)
         cap = quote(cap_token or 'capToken', safe='')
         return self.api(f'make/freeBook/{identifier(seat)}/{day(date)}/{start}/{end}?capToken={cap}')

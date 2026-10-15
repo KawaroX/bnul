@@ -1,2 +1,2 @@
-recursive-include deploy *.md *.service
+recursive-include deploy *.md *.service *.timer
 recursive-include tests *.py
