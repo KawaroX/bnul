@@ -10,17 +10,36 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
-from .client import BUILDING, Client, Error, config_path, identifier, minute
+from .client import BUILDING, Client as BaseClient, Error, config_path, identifier, minute
 from .rooms import FIXED_ROOMS
 from .watch_notify import enqueue, flush, safe_error, send_slack
 
-SHANGHAI = ZoneInfo('Asia/Shanghai')
+from .watch_schedule import SHANGHAI, HEARTBEAT_SECONDS, active, next_open, sleeping, schedule_for
 
 
 def now_local():
     return datetime.now(SHANGHAI)
+
+
+def require_active():
+    if not active(now_local()):
+        raise Error('当前为夜间休眠时段', 'WATCH_SLEEPING')
+
+
+class Client(BaseClient):
+    """Do not start a network probe, API request or login recovery after closing."""
+    def __init__(self, *args, **kwargs):
+        require_active()
+        super().__init__(*args, **kwargs)
+
+    def request(self, *args, **kwargs):
+        require_active()
+        return super().request(*args, **kwargs)
+
+    def recover_auth(self):
+        require_active()
+        return super().recover_auth()
 
 
 def date_time(date, minutes):
@@ -290,6 +309,8 @@ AUTH_CODES = {'20003', '401', 'LOCAL_AUTH_MISSING', 'SESSION_SIGNING_KEY_MISSING
 
 def check_cycle(args, store, clock=now_local, factory=Client):
     now = clock()
+    if not active(now):
+        return sleeping(now)
     auth = store.data.setdefault('auth', {})
     gated = auth.get('retryAt', 0) > now.timestamp()
     client = None
@@ -300,6 +321,8 @@ def check_cycle(args, store, clock=now_local, factory=Client):
         result = tick(client, store, args.execute, args.threshold, args.max_renewals, clock)
     except (Error, ValueError, KeyError, TypeError, OSError) as exc:
         code = str(getattr(exc, 'code', None) or 'WATCH_CHECK_FAILED')
+        if code == 'WATCH_SLEEPING':
+            return sleeping(clock())
         if gated and code in AUTH_CODES:
             result = {'event': 'error', 'code': auth.get('code', code),
                       'error': auth.get('error', safe_error(exc)), 'loginDeferredUntil': auth['retryAt']}
@@ -320,6 +343,7 @@ def check_cycle(args, store, clock=now_local, factory=Client):
 
 
 def record_result(store, result, now, notify):
+    notify = notify and active(now)
     health = store.data.setdefault('health', {})
     health['checkCount'] = health.get('checkCount', 0) + 1
     bad = result['event'] in ('error', 'missed_deadline')
@@ -364,28 +388,47 @@ def record_result(store, result, now, notify):
 
 
 def read_status(path, max_age=360, clock=now_local):
+    now = clock()
+    is_sleeping = not active(now)
+    schedule = {'mode': 'sleeping', 'nextCheckAt': next_open(now).isoformat()} if is_sleeping else {}
     try:
         data = json.loads(Path(path).read_text())
-        checked = datetime.fromisoformat(data['lastCheck']['at'])
-        age = (clock() - checked).total_seconds()
+        last_check = data.get('lastCheck', {})
+        checked = datetime.fromisoformat(data.get('heartbeatAt') or last_check['at'])
+        age = (now - checked).total_seconds()
+        query_age = (now - datetime.fromisoformat(last_check['at'])).total_seconds() if last_check else None
         if not isinstance(data.get('health', {}), dict):
             raise ValueError()
         notices = data.get('notifications', {})
         if not isinstance(notices, dict) or any(not isinstance(n, dict) for n in notices.values()):
             raise ValueError()
+        schedule = {**data.get('schedule', {}), **schedule}
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        return {'healthy': False, 'fresh': False, 'reason': 'missing_or_invalid_heartbeat', 'path': str(path)}
-    pending = sum(not n.get('deliveredAt') for n in data.get('notifications', {}).values())
+        return {'healthy': False, 'fresh': False, 'sleeping': is_sleeping, 'schedule': schedule,
+                'reason': 'missing_or_invalid_heartbeat', 'path': str(path)}
+    pending = sum(not n.get('deliveredAt') for n in notices.values())
     fresh = 0 <= age <= max_age
-    return {'healthy': fresh and data.get('health', {}).get('status') == 'healthy' and pending == 0,
-            'fresh': fresh, 'ageSeconds': round(age, 1), 'lastCheck': data['lastCheck'],
+    return {'healthy': fresh and (is_sleeping or (data.get('health', {}).get('status') == 'healthy' and pending == 0)),
+            'fresh': fresh, 'ageSeconds': round(age, 1), 'lastQueryAgeSeconds': query_age,
+            'sleeping': is_sleeping, 'schedule': schedule, 'lastCheck': last_check,
             'health': data.get('health', {}), 'auth': data.get('auth', {}),
             'pendingNotifications': pending,
             'notificationErrors': [n['lastError'] for n in notices.values() if n.get('lastError')],
             'runtime': data.get('runtime', {}), 'actions': data.get('actions', {}), 'path': str(path)}
 
 
+def deliver_notifications(store, clock):
+    now = clock()
+    if not active(now):
+        return []
+    return flush(store, now, allowed=lambda: active(clock()))
+
+
 def health_check(args, path, clock=now_local):
+    now = clock()
+    # No state mutation, failure creation or queued Slack delivery during scheduled sleep.
+    if not active(now):
+        return {**sleeping(now), 'sleeping': True, 'notificationErrors': []}
     status = read_status(path, args.max_age, clock)
     # Separate file/lock: the monitor can be hung while holding its own lock.
     with Store(str(path) + '.health').locked() as store:
@@ -393,8 +436,30 @@ def health_check(args, path, clock=now_local):
                   {'event': 'error', 'code': 'WATCH_HEARTBEAT_STALE',
                    'error': '监控心跳缺失或超过 ' + str(args.max_age) + ' 秒；请检查 bnul-watch.service'})
         record_result(store, result, clock(), args.notify == 'slack')
-        errors = flush(store, clock()) if args.notify == 'slack' else []
-    return {'fresh': status['fresh'], 'notificationErrors': errors}
+        errors = deliver_notifications(store, clock) if args.notify == 'slack' else []
+    return {'fresh': status['fresh'], 'sleeping': False, 'notificationErrors': errors}
+
+
+def heartbeat(store, now):
+    # Liveness is independent of reservation polling. A hung query cannot refresh this.
+    store.data['heartbeatAt'] = now.isoformat()
+    store.save()
+    watchdog()
+
+
+def wait_until(store, due, notify, clock=now_local, sleeper=time.sleep):
+    while True:
+        now = clock()
+        remaining = (due - now).total_seconds()
+        if remaining <= 0:
+            return
+        heartbeat(store, now)
+        if notify:
+            deliver_notifications(store, clock)
+        # Re-evaluate wall time every minute, without querying the school or recovering login.
+        remaining = (due - clock()).total_seconds()
+        if remaining > 0:
+            sleeper(min(HEARTBEAT_SECONDS, remaining))
 
 
 def watchdog():
@@ -415,30 +480,41 @@ def run_watch(args):
         raise Error('max-age 不能短于检查间隔')
     path = args.state_file or config_path().parent / 'watch-state.json'
     if args.status:
-        return read_status(path, args.max_age)
+        return read_status(path, args.max_age, now_local)
     if args.health_check:
-        return health_check(args, path)
+        return health_check(args, path, now_local)
     if args.notify_test:
         if args.notify != 'slack':
             raise Error('测试通知需指定 --notify slack')
-        return {'sent': True, 'receipt': send_slack('【测试】bnul 0.5.0 监控通知验收；此消息不表示真实故障。')}
+        if not active(now_local()):
+            return {**sleeping(now_local()), 'sent': False}
+        return {'sent': True, 'receipt': send_slack('【测试】bnul 监控通知验收；此消息不表示真实故障。')}
     with Store(path).locked() as store:
         store.data['runtime'] = {'pid': os.getpid(), 'startedAt': now_local().isoformat(),
                                  'interval': args.interval, 'threshold': args.threshold,
-                                 'execute': args.execute, 'notify': args.notify}
-        store.save()
+                                 'execute': args.execute, 'notify': args.notify,
+                                 'timezone': 'Asia/Shanghai', 'activeHours': '08:00–23:00',
+                                 'idleInterval': 1800, 'inUseInterval': 1200, 'awayInterval': 420}
+        heartbeat(store, now_local())
         while True:
-            started = time.monotonic()
+            started = now_local()
             # Resolve defaults here so tests and embedders can inject clock/client without network.
             result = check_cycle(args, store, now_local, Client)
-            record_result(store, result, now_local(), args.notify == 'slack')
-            errors = flush(store, now_local()) if args.notify == 'slack' else []
+            finished = now_local()
+            if result['event'] != 'sleeping':
+                record_result(store, result, finished, args.notify == 'slack')
+            schedule = schedule_for(result, started, finished, args.interval)
+            store.data['schedule'] = schedule
+            heartbeat(store, now_local())
+            errors = deliver_notifications(store, now_local) if args.notify == 'slack' else []
             if errors:
                 result['notificationErrors'] = errors
-            watchdog()
+            result = {**result, 'nextCheckAt': schedule['nextCheckAt'],
+                      'pollIntervalSeconds': schedule['intervalSeconds']}
             if args.once:
                 if result['event'] in ('error', 'missed_deadline', 'attention') or errors:
                     raise Error(result.get('error', '监控操作或通知未完成'), result.get('code'), result)
                 return result
             print(json.dumps({'at': now_local().isoformat(), **result}, ensure_ascii=False), flush=True)
-            time.sleep(max(0, args.interval - (time.monotonic() - started)))
+            wait_until(store, datetime.fromisoformat(schedule['nextCheckAt']), args.notify == 'slack',
+                       now_local, time.sleep)

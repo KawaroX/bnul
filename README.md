@@ -29,13 +29,13 @@ pipx install git+https://github.com/KawaroX/bnul.git
 pipx ensurepath
 ```
 
-重开终端后运行同样的 `bnul` 命令。以上命令适用于 Windows PowerShell、macOS 和 Linux。无需填写 Python 或 CLI 绝对路径。若需要固定版本，将安装 URL 改为 `git+https://github.com/KawaroX/bnul.git@v0.5.0`。
+重开终端后运行同样的 `bnul` 命令。以上命令适用于 Windows PowerShell、macOS 和 Linux。无需填写 Python 或 CLI 绝对路径。若需要固定版本，将安装 URL 改为 `git+https://github.com/KawaroX/bnul.git@v0.5.1`。
 
 Linux 缺少浏览器系统库时执行 `bnul auth install-browser --with-deps`，系统依赖安装可能要求管理员权限。默认使用上述命令安装的 Chromium；也可通过 `BNUL_BROWSER=chrome` 或 `msedge` 使用已安装的 Chrome/Edge。
 
-## 预约临期监控（0.5.0）
+## 预约临期监控（0.5.1）
 
-`bnul watch` 默认只观察，每 120 秒检查；`--execute --notify slack` 开启临期自动处理和通知。未签到或暂离距离截止不足 5 分钟时，取消/结束后尝试重约原座位至原结束时间，已签到使用中的预约不处理。登录失效自动恢复，失败持久化并通知；通知可重试，写操作结果不明不重复提交。
+`bnul watch` 默认只观察，每天北京时间 08:00–23:00 查询，夜间休眠且不触发登录恢复或告警。白天无预约每 30 分钟、使用中每 20 分钟、暂离剩余超过 10 分钟时每 7 分钟、暂离剩余不超过 10 分钟及未签到时每 2 分钟检查；`--execute --notify slack` 开启临期自动处理和通知。未签到或暂离距离截止不足 5 分钟时，取消/结束后尝试重约原座位至原结束时间，已签到使用中的预约不处理。登录失效自动恢复，失败持久化并通知；通知可重试，写操作结果不明不重复提交。
 
 ```sh
 bnul watch --once

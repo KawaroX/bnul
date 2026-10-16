@@ -65,11 +65,13 @@ def enqueue(store, key, message, now):
     store.save()
 
 
-def flush(store, now, sender=send_slack):
+def flush(store, now, sender=send_slack, allowed=None):
     errors = []
     due = [(key, item) for key, item in store.data.get('notifications', {}).items()
            if not item.get('deliveredAt') and item.get('nextAttempt', 0) <= now.timestamp()]
     for key, item in due[:3]:
+        if allowed is not None and not allowed():
+            break
         try:
             receipt = sender(item['text'])
         except (Error, OSError) as exc:

@@ -1,5 +1,5 @@
 [Unit]
-Description=BNU library reservation monitor (120 seconds)
+Description=BNU library reservation monitor (08:00-23:00 Asia/Shanghai, adaptive polling)
 Wants=network-online.target
 After=network-online.target
 StartLimitIntervalSec=0

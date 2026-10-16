@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.1
+
+- Run reservation checks only from 08:00 to 23:00 Asia/Shanghai; sleep overnight without starting queries, login recovery or alerts, including pending Slack deliveries and independent health alarms.
+- Poll idle accounts every 30 minutes, active use every 20 minutes, and away reservations every 7 minutes when over 10 minutes remain or every 2 minutes otherwise. Keep unsigned reservations and errors at 2 minutes.
+- Separate local process heartbeats from reservation queries, preserving watchdog/hang detection during long polling intervals; report sleep state, next check time and last actual query separately.
+- Guard new requests at closing time, wake at 08:00, and retain existing action journals, credentials, notification receipts and authentication backoff across upgrades.
+
 ## 0.5.0
 
 - Add opt-in reservation monitoring: check every 120 seconds and handle unsigned/away reservations only when less than five minutes remain; preserve seat and original end time.

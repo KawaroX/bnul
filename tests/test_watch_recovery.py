@@ -62,12 +62,19 @@ class RecoveryTests(unittest.TestCase):
 
     def test_login_failure_does_not_exit_daemon_and_loop_uses_120_seconds(self):
         c = FakeClient([])
-        with patch('bnul.watch.Client', return_value=c), patch('bnul.watch.tick', side_effect=Error('验证', 'AUTH_INTERACTION_REQUIRED')), patch('bnul.watch.time.sleep', side_effect=[None, KeyboardInterrupt]) as sleep, patch('sys.stdout', new_callable=io.StringIO):
+        current = [at('10:00')]
+        def advance(seconds):
+            current[0] += timedelta(seconds=seconds)
+            if current[0] >= at('10:04'):
+                raise KeyboardInterrupt()
+        with patch('bnul.watch.Client', return_value=c), patch('bnul.watch.tick', side_effect=Error('验证', 'AUTH_INTERACTION_REQUIRED')), patch('bnul.watch.now_local', side_effect=lambda: current[0]), patch('bnul.watch.time.sleep', side_effect=advance), patch('sys.stdout', new_callable=io.StringIO):
             with self.assertRaises(KeyboardInterrupt):
                 run_watch(self.args)
-        self.assertEqual(sleep.call_count, 2)
-        self.assertTrue(all(119 < call.args[0] <= 120 for call in sleep.call_args_list))
-        self.assertEqual(json.loads(self.path.read_text())['health']['checkCount'], 2)
+        data = json.loads(self.path.read_text())
+        self.assertEqual(data['health']['checkCount'], 2)
+        self.assertEqual(data['lastCheck']['at'], at('10:02').isoformat())
+        self.assertEqual(data['heartbeatAt'], at('10:03').isoformat())
+        self.assertFalse(c.auto_auth)
 
     def test_failure_dedup_reminder_recovery_and_second_incident(self):
         bad = {'event': 'error', 'code': 'NETWORK', 'error': '网络失败'}

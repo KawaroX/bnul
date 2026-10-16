@@ -5,7 +5,7 @@
 先安装正式版本 bnul 和浏览器，以及系统 `openconnect`、`iproute2`。不要在命令行或仓库填写密码。
 
 ```sh
-uv tool install git+https://github.com/KawaroX/bnul.git@v0.5.0
+uv tool install git+https://github.com/KawaroX/bnul.git@v0.5.1
 bnul auth install-browser --with-deps
 sudo apt-get install --no-install-recommends openconnect iproute2
 ```
@@ -30,4 +30,4 @@ auto 在发送选座 token 或业务请求之前，先无凭据检查直连是�
 
 已有 Chrome 可设置 `BNUL_BROWSER_EXECUTABLE`，或在 settings.json 配置 `browser_executable`。二维码位于 `~/.hermes/image_cache/bnu-webvpn/`，以便 Hermes 在不放宽媒体安全策略的情况下发送；其他 agent 可设置 `BNUL_QR_DIR` / `qr_directory`。Cookie 仍只保存在私有 `~/.config/bnul-webvpn/`，不发送给聊天。
 
-预约临期监控、每 120 秒检查及 Slack 失败通知见 [WATCH.md](WATCH.md)。该监控与本页网络连接服务分别管理，使用同一份正式 bnul 安装。
+预约临期监控、白天按状态调整间隔、夜间休眠及 Slack 失败通知见 [WATCH.md](WATCH.md)。该监控与本页网络连接服务分别管理，使用同一份正式 bnul 安装。

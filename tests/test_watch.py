@@ -244,7 +244,7 @@ class MonitorTests(unittest.TestCase):
                 run_watch(parser().parse_args(['watch'] + options))
 
     def test_once_errors_use_failure_exit_code(self):
-        with patch('bnul.watch.tick', side_effect=Error('unknown', 'DEADLINE_UNKNOWN')), patch('sys.stdout', new_callable=io.StringIO) as out:
+        with patch('bnul.watch.now_local', return_value=at('10:26')), patch('bnul.watch.tick', side_effect=Error('unknown', 'DEADLINE_UNKNOWN')), patch('sys.stdout', new_callable=io.StringIO) as out:
             self.assertEqual(main(['--json', 'watch', '--once', '--state-file', str(self.store.path)]), 1)
             self.assertFalse(json.loads(out.getvalue())['ok'])
 
