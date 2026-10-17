@@ -89,7 +89,7 @@ class DeadlineTests(unittest.TestCase):
                 plan(reservation('AWAY', awayTime=raw), RULES, at('10:26'))
 
     def test_natural_end_and_other_states(self):
-        self.assertIsNone(plan(reservation('AWAY', awayTime='10:10', makeEnd=630), RULES, at('10:26')))
+        self.assertFalse(plan(reservation('AWAY', awayTime='10:10', makeEnd=630), RULES, at('10:26'))['actionRequired'])
         for state in ['CHECK_IN', 'STOP', 'UNKNOWN']:
             self.assertIsNone(plan(reservation(state), RULES, at('10:26')))
         self.assertIsNone(plan(reservation(makeDateStr='2026-09-30'), RULES, at('10:26')))

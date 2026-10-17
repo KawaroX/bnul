@@ -5,7 +5,7 @@
 先安装正式版本 bnul 和浏览器，以及系统 `openconnect`、`iproute2`。不要在命令行或仓库填写密码。
 
 ```sh
-uv tool install git+https://github.com/KawaroX/bnul.git@v0.5.1
+uv tool install git+https://github.com/KawaroX/bnul.git@v0.5.2
 bnul auth install-browser --with-deps
 sudo apt-get install --no-install-recommends openconnect iproute2
 ```

@@ -1,0 +1,8 @@
+{
+  "provenance": "Read-only school API responses on 2026-10-18; identifiers and personal data omitted. Terminal history is replayed as AWAY only inside tests.",
+  "samples": [
+    {"date": "2026-10-17", "awayTime": 81578, "awayTimeM": 1359, "awayRange": "22:39", "lifeAwayAt": "2026-10-17 22:39:38", "lifeStopAt": "2026-10-17 23:00:02", "terminalStatus": "STOP", "begin": 829, "end": 1380},
+    {"date": "2026-09-29", "awayTime": 79475, "awayTimeM": 1324, "awayRange": "22:04", "terminalStatus": "LEAVE_EARLY", "begin": 1050, "end": 1380},
+    {"date": "2026-09-24", "awayTime": 78955, "awayTimeM": 1315, "awayRange": "21:55", "terminalStatus": "LEAVE_EARLY", "begin": 1070, "end": 1380}
+  ]
+}

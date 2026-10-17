@@ -59,6 +59,63 @@ def timestamp(value, date):
     return result.replace(tzinfo=SHANGHAI) if result.tzinfo is None else result.astimezone(SHANGHAI)
 
 
+def away_start(current, date):
+    """School awayTime is seconds since local midnight, not elapsed seconds.
+
+    Verified against awayTimeM, awayRange and the same reservation's AWAY life event.
+    Keep explicit timestamp support, but never infer units from a duration or the clock.
+    """
+    raw = current.get('awayTime')
+    seconds = isinstance(raw, int) and not isinstance(raw, bool)
+    seconds = seconds or (isinstance(raw, str) and re.fullmatch(r'\d{1,5}', raw.strip()) is not None)
+    try:
+        if seconds and len(str(raw).strip()) <= 5:
+            value = int(raw)
+            if not 0 <= value < 86400:
+                raise ValueError()
+            start = date_time(date, 0) + timedelta(seconds=value)
+            source = 'awayTime-seconds-since-midnight'
+        else:
+            if isinstance(raw, bool):
+                raise ValueError()
+            start = timestamp(raw, date)
+            source = 'awayTime-timestamp'
+    except (Error, ValueError, TypeError, OverflowError, OSError):
+        raise Error('暂离起点格式无法确认；应为当天零点起的秒数或明确时间', 'DEADLINE_UNKNOWN') from None
+    minutes = start.hour * 60 + start.minute
+    coarse = current.get('awayTimeM')
+    if coarse not in (None, ''):
+        if (isinstance(coarse, bool) or not re.fullmatch(r'\d{1,4}', str(coarse))
+                or int(coarse) != minutes):
+            raise Error('暂离秒数与 awayTimeM 分钟字段不一致，未自动操作', 'DEADLINE_UNKNOWN')
+    display = current.get('awayRange')
+    if display not in (None, ''):
+        if (not isinstance(display, str) or not re.fullmatch(r'\d{2}:\d{2}', display)
+                or display != start.strftime('%H:%M')):
+            raise Error('暂离起点与 awayRange 显示时间不一致，未自动操作', 'DEADLINE_UNKNOWN')
+    return start, source
+
+
+def observation(current, now):
+    # Minimal, bounded diagnostics. Never persist the whole account/API response.
+    fields = ('id', 'status', 'makeDateStr', 'makeBegin', 'makeEnd',
+              'awayTime', 'awayTimeM', 'awayRange')
+    values = None
+    if current is not None:
+        values = {}
+        for key in fields:
+            if key not in current:
+                continue
+            value = current[key]
+            if value is None or isinstance(value, (bool, int, float)):
+                values[key] = value
+            elif isinstance(value, str):
+                values[key] = safe_error(value)[:120]
+            else:
+                values[key] = {'type': type(value).__name__}
+    return {'at': now.isoformat(), 'reservation': values}
+
+
 def away_policy(system):
     # Parse the official rule, rather than interpreting awayTimeM/awayRange by name.
     text = re.sub(r'\s+', '', html.unescape(re.sub(r'<[^>]*>', '', system.get('agreements', ''))))
@@ -101,6 +158,9 @@ def plan(current, system, now):
     if not 0 <= begin < end < 1440:
         raise Error('预约时段异常', 'DEADLINE_UNKNOWN')
     end_at = date_time(date, end)
+    if end_at <= now:
+        return None
+    details = {}
     if state == 'RESERVE':
         grace = int(system.get('signEndMinute', 0))
         if not 1 <= grace <= 120:
@@ -114,19 +174,18 @@ def plan(current, system, now):
         source = 'signEndMinute' if not match else 'message'
     else:
         duration, meals = away_policy(system)
-        start = timestamp(current.get('awayTime'), date)
+        start, source = away_start(current, date)
         if start.date().isoformat() != date or start > now or start < date_time(date, begin):
             raise Error('暂离起点与预约时间不一致', 'DEADLINE_UNKNOWN')
-        deadline, source = away_deadline(start, duration, meals), 'awayTime+official-rules'
-        # The normal end releases the seat first; do not extend the original reservation.
-        if end_at <= deadline:
-            return None
-    if end_at <= now:
-        return None
+        deadline = away_deadline(start, duration, meals)
+        source += '+official-rules'
+        # Keep observing the deadline even when normal reservation expiry comes first.
+        details = {'awayStartedAt': start.isoformat(), 'naturalEndAt': end_at.isoformat(),
+                   'actionRequired': deadline < end_at}
     return {'id': identifier(current['id']), 'status': state,
             'seatId': identifier(current['seatId']), 'roomId': identifier(current['roomId']),
             'date': date, 'end': end, 'deadline': deadline.isoformat(), 'deadlineSource': source,
-            'remainingSeconds': (deadline - now).total_seconds()}
+            'remainingSeconds': (deadline - now).total_seconds(), **details}
 
 
 def current_record(client):
@@ -190,6 +249,8 @@ def tick(client, store, execute=False, threshold=300, max_renewals=3, clock=now_
     client.bootstrap()
     current = current_record(client)
     client._watch_read_ok = True
+    store.data['lastObservation'] = observation(current, clock())
+    store.save()
     reconcile_actions(store, current)
     if current is None:
         return {'event': 'idle'}
@@ -197,6 +258,8 @@ def tick(client, store, execute=False, threshold=300, max_renewals=3, clock=now_
     if candidate is None:
         return {'event': 'observing', 'id': str(current['id']), 'status': current.get('status')}
     event = {'event': 'observing', **candidate}
+    if candidate.get('actionRequired') is False:
+        return {**event, 'reason': 'reservation_ends_before_away_deadline'}
     if candidate['remainingSeconds'] <= 0:
         return {**event, 'event': 'missed_deadline', 'error': '已超过签到或暂离截止时间，未自动操作'}
     if candidate['remainingSeconds'] >= threshold:
@@ -335,11 +398,34 @@ def check_cycle(args, store, clock=now_local, factory=Client):
                             code=code, error=safe_error(exc))
                 result['loginDeferredUntil'] = auth['retryAt']
     if client is not None and getattr(client, '_watch_read_ok', False):
+        if result.get('code') in ('DEADLINE_UNKNOWN', 'WATCH_ROOM_UNSUPPORTED'):
+            result['observation'] = store.data.get('lastObservation')
+            row = (result['observation'] or {}).get('reservation') or {}
+            result.update({k: row[k] for k in ('id', 'status') if k in row})
         auth.clear()
         if client.auth_recovered:
             result['loginRecovered'] = True
     store.save()
     return result
+
+
+def failure_notice(result):
+    code = str(result.get('code', ''))
+    if code == 'WATCH_HEARTBEAT_STALE':
+        return 'bnul 监控心跳异常', '独立健康检查仍在运行，请检查 bnul-watch.service。'
+    if code in ('DEADLINE_UNKNOWN', 'WATCH_ROOM_UNSUPPORTED'):
+        return ('bnul 预约期限无法确认',
+                '已读取预约状态，但截止时间或适用规则无法确认；本轮未执行取消、结束或重约。'
+                '白天继续检查；请查看 bnul watch --status 中的 lastObservation。')
+    if result.get('event') == 'missed_deadline':
+        return 'bnul 已错过自动处理窗口', '已超过截止时间，未自动操作；请核实学校预约状态。白天继续检查。'
+    if code in AUTH_CODES or result.get('loginDeferredUntil'):
+        detail = '登录恢复尚未成功；白天继续查询会话状态。'
+        retry = result.get('loginDeferredUntil')
+        if retry:
+            detail += '下次自动登录重试不早于 ' + datetime.fromtimestamp(retry, SHANGHAI).isoformat() + '（仅运行时段内）。'
+        return 'bnul 登录恢复异常', detail + '请查看 bnul watch --status。'
+    return 'bnul 监控查询失败', '本轮未能完成状态核验；白天按检查间隔重试。请查看 bnul watch --status。'
 
 
 def record_result(store, result, now, notify):
@@ -356,10 +442,10 @@ def record_result(store, result, now, notify):
         incident = health['incident']
         health.update(status='degraded', consecutiveFailures=health.get('consecutiveFailures', 0) + 1)
         if notify and now.timestamp() - incident['lastNotice'] >= 3600:
+            title, guidance = failure_notice(result)
             enqueue(store, 'failure:' + incident['id'] + ':' + str(int(now.timestamp() // 3600)),
-                    'bnul 监控失败\n时间：' + now.isoformat() + '\n' + result.get('error', signature)
-                    + ('\n独立健康检查仍在运行，请检查服务状态。' if result.get('code') == 'WATCH_HEARTBEAT_STALE'
-                       else '\n仍按配置间隔检查；登录恢复失败后按退避间隔重试。请查看 bnul watch --status。'), now)
+                    title + '\n时间：' + now.isoformat() + '\n' + result.get('error', signature)
+                    + '\n' + guidance, now)
             incident['lastNotice'] = now.timestamp()
     else:
         incident = health.pop('incident', None)
@@ -408,9 +494,10 @@ def read_status(path, max_age=360, clock=now_local):
                 'reason': 'missing_or_invalid_heartbeat', 'path': str(path)}
     pending = sum(not n.get('deliveredAt') for n in notices.values())
     fresh = 0 <= age <= max_age
-    return {'healthy': fresh and (is_sleeping or (data.get('health', {}).get('status') == 'healthy' and pending == 0)),
+    return {'healthy': fresh and data.get('health', {}).get('status') == 'healthy' and pending == 0,
             'fresh': fresh, 'ageSeconds': round(age, 1), 'lastQueryAgeSeconds': query_age,
             'sleeping': is_sleeping, 'schedule': schedule, 'lastCheck': last_check,
+            'lastObservation': data.get('lastObservation'),
             'health': data.get('health', {}), 'auth': data.get('auth', {}),
             'pendingNotifications': pending,
             'notificationErrors': [n['lastError'] for n in notices.values() if n.get('lastError')],

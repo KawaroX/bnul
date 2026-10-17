@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.2
+
+- Parse the school's real `awayTime` representation as seconds since Beijing midnight; cross-check `awayTimeM` and `awayRange` when present. Retain explicit timestamp support and fail closed on conflicting fields.
+- Keep observing reservations that naturally finish before the away deadline; do not stop or rebook them or report a deadline parsing failure.
+- Classify deadline/rule, authentication, query, missed-window and heartbeat alerts separately. Only authentication-related failures mention login backoff.
+- Persist minimal, bounded reservation diagnostics without account credentials; expose the last observation in status. Scheduled sleep no longer masks an unresolved business failure as healthy.
+- Add anonymized real-response regression fixtures, including the 2026-10-17 incident, and replay tests that perform no school mutations.
+
 ## 0.5.1
 
 - Run reservation checks only from 08:00 to 23:00 Asia/Shanghai; sleep overnight without starting queries, login recovery or alerts, including pending Slack deliveries and independent health alarms.

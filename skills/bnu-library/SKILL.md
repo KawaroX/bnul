@@ -107,9 +107,9 @@ recommendations 为空且 searchExhausted=false 时，只能说“已检查的�
 需要更详细的安装、PATH 和平台说明时，读取 [安装说明](references/installation.md) 或仓库 README。账号密码只在用户终端通过 `bnul auth setup` 配置，不在聊天中收集。
 
 
-## 预约临期监控（0.5.1）
+## 预约临期监控（0.5.2）
 
-用户授权监控和自动处理后可用 `bnul watch --execute --interval 120 --notify slack`。每天北京时间 08:00–23:00 运行；夜间不查询、不触发登录恢复、不生成或投递告警。白天无预约 30 分钟、CHECK_IN 20 分钟、AWAY 剩余超过 10 分钟时 7 分钟、不超过 10 分钟时 2 分钟；RESERVE 和异常每 2 分钟。默认 `bnul watch` 只观察，`--once` 单次，`--status` 只读本地健康、下次检查时间和动作记录；夜间 `--once` 返回休眠。主馆 RESERVE/AWAY 严格在距离截止不足 300 秒时释放并尝试原位重约；CHECK_IN 不处理，结束时间不延长。暂离规则以实时官网须知为准，无法确认就通知而不操作。
+用户授权监控和自动处理后可用 `bnul watch --execute --interval 120 --notify slack`。每天北京时间 08:00–23:00 运行；夜间不查询、不触发登录恢复、不生成或投递告警。白天无预约 30 分钟、CHECK_IN 20 分钟、AWAY 剩余超过 10 分钟时 7 分钟、不超过 10 分钟时 2 分钟；RESERVE 和异常每 2 分钟。默认 `bnul watch` 只观察，`--once` 单次，`--status` 只读本地健康、下次检查时间和动作记录；夜间 `--once` 返回休眠。主馆 RESERVE/AWAY 严格在距离截止不足 300 秒时释放并尝试原位重约；CHECK_IN 不处理，结束时间不延长。暂离规则以实时官网须知为准；awayTime 为当天零点起的秒数，awayTimeM 为分钟数，awayRange 为 HH:MM 显示值，存在的字段需相互一致。自然结束早于暂离截止时只观察。无法确认就分类告警而不操作，lastObservation 保留最小诊断字段；期限解析告警不能解释为登录失败。
 
 保持普通业务命令同一份正式安装，不使用另一份过时代码。Linux 长期运行用随安装包发布的 deploy/linux/WATCH.md 与 systemd 模板；启用服务是实际自动操作，沿用用户已有授权。可用 BNUL_CREDENTIAL_ENV 指向服务器现有私有 dotenv，不因 SSH 进程没加载变量就断言服务器没有凭据；只检查配置与必要键是否可用，不输出秘密。
 
