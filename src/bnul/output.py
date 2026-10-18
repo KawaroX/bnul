@@ -99,11 +99,11 @@ def reservation_list(data):
 def buildings(data):
     lines = [fields([('可预约日期', '、'.join(map(str, data.get('dates', []))))])]
     for row in data.get('buildings', []):
-        lines.append(fields([('楼馆', row.get('name')), ('ID', row.get('id')),
+        lines.append(fields([('楼馆', row.get('name')), ('别名', row.get('alias')), ('ID', row.get('id')),
                              ('开放时间', scalar(row.get('seTime')).replace(' _ ', '–')),
                              ('启用', bool(row['enabled']) if 'enabled' in row else None), ('备注', row.get('remark'))]))
         for floor in row.get('floors', []):
-            lines.append('  ' + fields([('楼层', floor.get('name')), ('ID', floor.get('id')),
+            lines.append('  ' + fields([('楼层', floor.get('name')), ('别名', floor.get('alias')), ('ID', floor.get('id')),
                                        ('启用', bool(floor['enabled']) if 'enabled' in floor else None)]))
     return '\n'.join(line for line in lines if line) or '没有楼馆信息。'
 
@@ -112,7 +112,7 @@ def rooms(args, data):
     if isinstance(data, dict) and 'rooms' in data:
         rows = data['rooms']
         heading = f'房间清单：{len(rows)} 个'
-        columns = [('序号', lambda r: r.get('number')), ('别名', lambda r: r.get('alias')),
+        columns = [('别名', lambda r: r.get('alias')),
                    ('房间', lambda r: r.get('name')), ('房间ID', lambda r: r.get('id'))]
     else:
         rows = data

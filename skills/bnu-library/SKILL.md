@@ -7,13 +7,21 @@ description: 使用 bnul CLI 查询与预约北京师范大学图书馆自习座
 
 ## 命令调用与输出读取
 
-单条 CLI 命令直接使用终端工具；有直接 terminal 时，不要为了执行一条 `bnul current` 再套 `execute_code`/Python。工具返回的退出码和 `ok` 才表示 bnul 是否成功，外层 Python 成功不代表查询成功。
-
-直接运行 `bnul current`、`bnul seats ...` 等即可读取默认文本，无需添加输出参数。文本按命令用途展示主要信息：楼馆和楼层、区域和设施、座位及当前状态、可选时段、推荐结果、预约状态及签到提示。下文示例均使用默认文本；需要完整字段、嵌套详情或程序处理时可自行加前置 `--json`。
+按任务运行 `bnul seats ...`、`bnul recommend ...` 等即可读取默认文本，无需添加输出参数。文本按命令用途展示主要信息：楼馆和楼层、区域和设施、座位及当前状态、可选时段、推荐结果、预约状态及签到提示。下文示例均使用默认文本；需要完整字段、嵌套详情或程序处理时可自行加前置 `--json`，通常情况不需要使用 `--json`。
 
 文本隐藏空值和内部元数据，不限制本次返回的记录条数，不机械截断字段、深度或长消息，也不附带重复的 JSON 提示。历史按接口分页，推荐保留搜索范围、检查数量和是否查完。文本中的“空闲”和 afterFree 仍不能代替完整时段校验。JSON 保留命令查询范围内的完整结果；显式筛选、分页和推荐搜索范围按命令参数生效。
 
 JSON 可直接作为文本阅读，也可按复杂度和长度使用 Python、jq 等工具解析、筛选或计算，不限制解析工具。大结果可用 `bnul --json ... > result.json` 保存后解析，避免完整内容占满上下文；解析器把 JSON 作为数据读取。是否缩小查询范围应由任务决定，不为节省展示长度丢掉任务需要的数据。
+
+## 当前预约按需查询
+
+按用户目标直接选择业务命令。查空位、推荐座位、查询可选时段或发起新预约时，不把 `current` 当作登录检测、连通性探测或例行前后检查。
+
+- 用户要查看当前预约、签到状态或要求刷新时，运行一次 `bnul current`。
+- 操作需要当前预约的 ID/状态，且本次流程的返回结果尚不足时才补查；取消/结束优先按下文使用操作预览或已有结果，不要过分依赖current。
+- 查询或写操作的成功结果已足够回答时直接使用。仅为补充用户需要的缺失信息或核实结果未知的写操作才继续查，不为“再确认一下”重复查询。
+
+同一连续操作复用刚返回的预约信息；用户要求刷新、出现预约变化或新的结果不确定性时再查。未获监控授权时不轮询。
 
 ## 常在线 VPS 与学校 WebVPN
 
@@ -27,15 +35,15 @@ JSON 可直接作为文本阅读，也可按复杂度和长度使用 Python、jq
 - `starting` 时检查 `bnul --json auth webvpn --status`，短暂等待，最多 20 秒。`already_authenticated` 无需扫码。
 - 用户确认扫码后，用上述 `--status` 核实 `authenticated` / `already_authenticated` 再继续原查询一次，不能仅凭用户文字判断认证完成。
 - 二维码失效或用户要求换图时运行 `bnul --json auth webvpn --refresh`，发送新返回的图片，不复用旧路径。
-- 当前端返回格式异常或网络错误时如实报错，不强制注销会话或循环索要扫码。Cookie 不发到聊天。写请求已提交后的错误，先查 current/recent，不因恢复登录而重复提交。
+- 当前端返回格式异常或网络错误时如实报错，不强制注销会话或循环索要扫码。Cookie 不发到聊天。写请求已提交后结果不明时，按下文选择最相关的一项查询核实，不因恢复登录而重复提交。
 
 二维码默认在 `~/.hermes/image_cache/bnu-webvpn/`，可用 `BNUL_QR_DIR` 指定可发送的图片目录；学校 Cookie 保存在私有 `~/.config/bnul-webvpn/`。不将 Cookie 和图片放在同一可公开发送目录。学校追加验证码、二次认证或修改账号权限时仍由本人处理。
 
 ## 登录
 
-从 0.4.1 起支持从登录响应的 `userInfoRes.hmacKey` 获取签名密钥，公共配置中的 `hmacKey` 可以为空。CLI 保存配对的 token 和密钥，旧会话缺密钥时自动恢复一次。`SESSION_SIGNING_KEY_MISSING` 表示缺少配对密钥。普通业务查询若自动恢复仍失败，应及时说明具体错误；不要反复切换文本/JSON 重跑、自行猜接口或编写登录脚本。用户明确要求排查工具时再开展诊断。
+日常直接执行业务命令，不要每次先要求用户登录。CLI 在本地会话缺失或明确鉴权失败（20003/401）时，自动后台启动专用浏览器，先复用学校登录状态，再使用系统凭据库中的凭据填写学校 CAS 表单；成功后重试查询一次。CLI 在写操作前自动检查会话，不需要 agent 另查 `current`；不重放已提交的写请求。网络错误不触发自动登录。
 
-日常直接执行业务命令，不要每次先要求用户登录。CLI 在本地会话缺失或明确鉴权失败（20003/401）时，自动后台启动专用浏览器，先复用学校登录状态，再使用系统凭据库中的凭据填写学校 CAS 表单；成功后重试查询一次。写操作前检查会话，不重放已提交的写请求。网络错误不触发自动登录。
+学校现在可能将签名密钥放在登录响应的 `userInfoRes.hmacKey`，公共配置中的 `hmacKey` 为空。CLI 同时保存配对的 token 和密钥；旧会话缺密钥时自动恢复一次。`SESSION_SIGNING_KEY_MISSING` 表示缺少配对密钥，不是 VPN 配置错误。普通业务查询若自动恢复仍失败，应立即说明具体错误；不要反复切换文本/JSON 重跑，或自行改写 HTTP 请求、猜接口、读取登录秘密、调试官网。用户明确要求排查工具时再开展诊断。
 
 首次用 `bnul auth setup` 在用户本机终端隐藏输入密码并存入系统凭据库；不要让用户把密码发送到聊天或由 agent 拼接到命令里。setup 仅保存，密码是否有效要以实际认证为准。若没有配置且出现 AUTH_SETUP_REQUIRED，指导用户完成这一次配置。验证码、二次认证或密码错误需要 `bnul --no-proxy auth login` 的可见官网窗口。不要将正常 token 失效一律交回用户手动登录。
 
@@ -52,9 +60,9 @@ JSON 可直接作为文本阅读，也可按复杂度和长度使用 Python、jq
 - `bnul recommend --date today --start 19:00 --end 21:00`
 - `bnul recommend --date today --start now --end 22:00`
 
-从自然语言提取日期、起止时间；“现在”保留 now，不能替换为固定分钟。只有缺少必要时段或表达歧义时才问；不要先要求用户给出座位 ID。未指定位置时使用默认主馆并在答复中说明。用户指定楼馆/楼层/房间时先用 buildings/rooms 解析实际 ID，再传 `--building`、`--floor`、`--room`。不要因默认房间偏好擅自覆盖明确位置要求。
+从自然语言提取日期、起止时间；“现在”保留 now，不能替换为固定分钟。只有缺少必要时段或表达歧义时才问；不要先要求用户给出座位 ID。未指定位置时使用默认主馆并在答复中说明。用户指定位置时，按下表使用固定别名填写 `--building`、`--floor`、`--room`；别名无法识别时，按下文查询 ID。不要因默认房间偏好擅自覆盖明确位置要求。
 
-recommend 只读取数据：默认返回 5 个通过实时 starts/ends 校验的候选，最多检查 50 个座位；未指定偏好时按服务器房间顺序跨房间轮流检查；可用 --limit/--max-checks 调整。不根据当前 FREE/IN_USE 或 afterFree 单独判断匹配。指定 --room-order 或 --room-sequence 时，按房间优先级逐个区域检查，达到结果/检查上限即停；只有该区域候选查完才进入下一项。顺序中未列出的区域不参与搜索，不静默回退。默认排序是查找顺序，不是最佳舒适度评分。
+recommend 只读取数据：默认返回 5 个通过实时 starts/ends 校验的候选，最多检查 50 个座位；未指定偏好时按服务器房间顺序跨房间轮流检查；可用 --limit/--max-checks 调整。不根据当前 FREE/IN_USE 或 afterFree 单独判断匹配。指定 --room-order 时，按房间优先级逐个区域检查，达到结果/检查上限即停；只有该区域候选查完才进入下一项。顺序中未列出的区域不参与搜索，不静默回退。默认排序是查找顺序，不是最佳舒适度评分。
 
 按用户希望的数量用简短中文给出返回的候选：位置、座位编号、覆盖时段，以及“该完整时段已通过可选时间校验”。可根据用户偏好在这些候选中推荐一个，但只使用已知事实，不能编造靠窗、插座、安静等座位属性。无额外偏好时说明候选都匹配时段，没有证据证明某个更舒适。保留返回的 roomId/seatId/date/beginMinute/endMinute 供后续执行。
 
@@ -62,50 +70,112 @@ recommendations 为空且 searchExhausted=false 时，只能说“已检查的�
 
 用户只要求推荐时不执行 book --execute。用户选定并要求预约后重新用 book 校验/提交，沿用 now 标记，不照搬查询时的当前分钟。如果用户本来明确要求“找一个符合条件的并预约”，则在其授权条件内选择后执行，无需重复索取相同授权。
 
-## 房间清单与区域偏好
+## 楼馆、楼层与房间别名
 
-先用 `bnul room-list`（或不带时段的 `bnul rooms`）读取当前楼馆的清单。每项有 number、alias（r1 等）、shortName、name、id。--room 支持完整 ID、清单序号、r序号、全名、短名称或唯一匹配片段，例如 `--room '3F自习'`。名称匹配存在歧义时列出候选让用户选，不猜。seats/book/recommend 均支持这些写法，其他楼馆需配合 --building。
+每个已登记位置只提供一个固定别名，CLI 将别名解析为官方 ID。楼馆使用 `bN`；楼层和房间在所选楼馆内分别使用 `fN`、`rN`。下表只列别名和位置说明，不列 ID，也不把说明文字作为另一套传参方式。未指定楼层时搜索全部楼层。
 
-从 0.3.1 起，主馆编号在代码中统一固定，与 README 一致：1=1F师樾厅，2=2F自习区，3=3F多媒体中心，4=3F自习区，5=4F借阅区，6=5F借阅区，7=6F阅览区，8=7F阅览区，9=8F借阅区。可直接解释这些编号，不需要先查本机映射。旧版本机编号缓存已停用；升级时旧偏好需按固定清单核对。实时清单表示区域身份，不代表该时段有座。未知区域或其他未配置楼馆的 number/alias 为 null，使用名称或 ID，不自行编号；主馆目前没有编号10（0）。
+优先直接使用别名，无需预先查询目录。别名无法识别或位置未列出时，楼馆、楼层用 `bnul buildings` 获取 ID；房间用 `bnul room-list --building 别名或ID` 获取 ID，再以返回的 ID 传参。按名称和所属楼馆核对结果，不自行编造别名。登录失败、网络错误或没有可约座位不表示别名失效。
 
-用户给了区域偏好时，直接按清单映射为有序搜索：`--room-order '4,3,2'` 或 `--room-order '3F自习,2F自习'`。也支持 `--room-sequence 432`；每一位一个序号，0 代表第 10 项。`--room-order 10` 是第 10 项，`--room-sequence 10` 则是第 1、10 项；超过10的序号用逗号列表。--room、--room-order、--room-sequence 互斥；序列中的区域也必须符合 --building/--floor。
+以下位置于 2026-10-18 核对；表格不代表实时有座。用户要求刷新或展示最新清单时再查询目录。
+
+### 楼馆别名
+
+| 别名 | 楼馆 |
+| --- | --- |
+| `b1` | 主馆 |
+| `b2` | 主馆南区 |
+| `b3` | 教育学分馆 |
+| `b4` | 沙河 |
+
+### 楼层别名
+
+`--floor` 用于 `rooms` / `recommend`。别名表示所选楼馆的实际楼层，不是清单行号。
+
+| 别名 | 楼层 |
+| --- | --- |
+| `f1` | 1 层 |
+| `f2` | 2 层 |
+| `f3` | 3 层 |
+| `f4` | 4 层 |
+| `f5` | 5 层 |
+| `f6` | 6 层 |
+| `f7` | 7 层 |
+| `f8` | 8 层 |
+
+可选范围：主馆 `f1`–`f8`；主馆南区 `f3`；教育学分馆 `f1`；沙河 `f1`–`f2`。例如主馆三层：`bnul recommend --building b1 --floor f3 --date tomorrow --start 19:00 --end 21:00`。
+
+### 房间别名
+
+`--room` 用于 `seats` / `book` / `recommend`，配合所属楼馆的 `--building` 使用。
+
+主馆（`--building b1`，可省略）：
+
+| 别名 | 房间 |
+| --- | --- |
+| `r1` | 1F 师樾厅 |
+| `r2` | 2F 自习区 |
+| `r3` | 3F 多媒体中心 |
+| `r4` | 3F 自习区 |
+| `r5` | 4F 借阅区 |
+| `r6` | 5F 借阅区 |
+| `r7` | 6F 阅览区 |
+| `r8` | 7F 阅览区 |
+| `r9` | 8F 借阅区 |
+
+主馆南区（`--building b2`）：
+
+| 别名 | 房间 |
+| --- | --- |
+| `r1` | 工具报刊外文阅览区 |
+
+教育学分馆（`--building b3`）：
+
+| 别名 | 房间 |
+| --- | --- |
+| `r1` | 教育学分馆 108 |
+| `r2` | 教育学分馆 149 |
+
+沙河（`--building b4`）：
+
+| 别名 | 房间 |
+| --- | --- |
+| `r1` | 昌平校园 G 区分馆一层 |
+| `r2` | 昌平校园 G 区分馆二层 |
+
+用户给了区域偏好时，将别名填入有序搜索，例如 `--room-order 'r4,r3,r2'`。顺序中的房间必须属于所选楼馆，并符合楼层范围；`--room` 和 `--room-order` 互斥。
 
 已有用户偏好时优先使用，不必重新询问同样偏好；没有偏好时使用默认跨区域模式并说明范围。结果因 max-checks 截断时可能尚未检查后续区域，要根据 searchExhausted/stopReason 如实说明；需要继续可以针对余下区域查询，不把首选区域未查完误报为首选无座。不要擅自缩短时段来迎合区域偏好。
 
 ## 查询和选座
 
-- `bnul room-list` 返回房间编号与可用名称；`bnul rooms` 不带时段时显示同一清单。
+- `bnul room-list` 返回房间别名、名称与 ID；`bnul rooms` 不带时段时显示同一清单。
 - `bnul buildings` 返回楼馆、楼层和可预约日期。
-- `bnul rooms --date tomorrow --start 19:00 --end 21:00` 查询主馆房间；可指定 `--building ID --floor ID --power --windows`。
-- `bnul seats --room ID --date tomorrow --start 19:00 --end 21:00` 返回座位；可用 `--label 008` 精确匹配编号。
+- `bnul rooms --date tomorrow --start 19:00 --end 21:00` 查询主馆房间；可指定 `--building b1 --floor f3 --power --windows`。
+- `bnul seats --room r4 --date tomorrow --start 19:00 --end 21:00` 返回座位；可用 `--label 008` 精确匹配编号。
 - `bnul times --seat ID --date tomorrow --start 19:00` 返回时间线、可选开始时间和该开始时间对应的结束时间。
 
-默认楼馆是主馆 `1887388460760797184`，默认房间是 3F 自习区（低声区、朗读区）`1888096971220160512`。用户曾使用的 008 号座位 ID 为 `1888111985066872919`；这是参考位置，不代表以后预约时默认选择它。日期按 Asia/Shanghai；支持 today、tomorrow、YYYY-MM-DD。座位 ID 与带前导零的编号保持字符串。
+默认楼馆是主馆（`b1`）。主馆的 `seats` / `book` 未指定房间时默认使用 3F 自习区（`r4`）；选择其他楼馆时必须同时指定对应的 `--room`，否则返回 `ROOM_REQUIRED`，不使用主馆默认房间。`recommend` 未指定房间时在所选楼馆跨房间搜索，未指定楼馆则使用主馆。日期按 Asia/Shanghai；支持 today、tomorrow、YYYY-MM-DD。座位 ID 与带前导零的编号保持字符串。
 
 `status` 是当前状态；`afterFree` 不能单独证明完整目标时段可约。即使 IN_USE/AWAY 也可能在未来有可约时段，以实时 starts/ends 校验为准。预约记录中的 14:04 不代表允许任意分钟提交。固定开始/结束时间通常为整点或半点，必须使用实时 starts/ends 中的选项，不自行凑数或静默舍入。用户要求“现在开始”时用 `--date today --start now`（也支持 `--start=-1` 或“现在”），而不是把本机当前分钟填成固定时间。可选列表的 now 对应提交 -1；查询结束时间用当前分钟数，CLI 已分别处理。若服务器没有返回 now，就不能立即预约，不擅自改成未来时段。不要用旧附件判断当前空闲情况。
 
 ## 预约、取消与结束
 
-先用 `bnul book --room ID --seat ID --date DATE --start HH:MM --end HH:MM` 生成实时校验的预览。实际提交加 `--execute`。用户明确要求预约且已确定座位和时间即可执行；仅询问空位、提供接口样例或开发工具不构成实际预约授权。缺少必要日期、时间或座位选择时先查询可选项。
+需要预览时运行 `bnul book --room r4 --seat ID --date DATE --start HH:MM --end HH:MM`；用户已明确授权且座位、日期、时段确定时，可直接加 `--execute` 提交，无需先单独预览。执行本身会重新校验座位及实时可选开始/结束时间。`book` 不需要 `--floor`：CLI 先确认目标座位属于指定房间，再按座位校验时段并提交；最终预约接口使用座位和时段，楼层只用于查找房间、推荐座位时筛选范围。仅询问空位、提供接口样例或开发工具不构成实际预约授权。缺少必要日期、时间或座位选择时先查询可选项。
 
 预约成功后呈现位置、座位、日期、时段、状态以及服务端 message 中的签到要求。RESERVE 是待签到，CHECK_IN 是使用中，AWAY 是暂离，STOP 是已结束。不要根据 showCheckBtn、isSign 或 oneself 单独推断已签到。需要验证码时交由用户在官网完成；不尝试绕过。可通过环境变量 BNUL_CAP_TOKEN 传入正常验证所得 token。
 
-`bnul current` 查看当前预约；`recent` 查看最近详情；`history --page 1 --page-size 10` 分页查看预约历史，`breach --page 1 --page-size 10` 分页查看违约记录（返回 list/count，不自行判断违约是否过期）；`life MAKE_ID` 查看变更记录。遇到“已有有效预约”时保留错误中的 ctId，查询 current；不要自动结束原预约。网络失败时写操作结果可能未知，先查询 current/recent，不盲目重试。
+`bnul current` 查看当前预约；`recent` 查看最近详情；`history --page 1 --page-size 10` 分页查看预约历史，`breach --page 1 --page-size 10` 分页查看违约记录（返回 list/count，不自行判断违约是否过期）；`life MAKE_ID` 查看变更记录。遇到“已有有效预约”时保留错误中的 ctId；只有需要了解或处理原预约且现有信息不足时才查 `current`，不要自动结束原预约。
 
-先查 `current` 判断状态：RESERVE 未签到用 `bnul cancel` 预览，执行为 `bnul cancel --execute --expect-id MAKE_ID`；CHECK_IN/AWAY 已签到用 `bnul stop` 预览，执行为 `bnul stop --execute --expect-id MAKE_ID`。两个命令不会自动互相转换，执行需匹配当前预约 ID。沿用用户已有取消/结束授权，不重复索取；仅提供抓包或要求开发功能不构成操作真实预约的授权。
+取消/结束按状态选择：RESERVE 未签到用 `cancel`，CHECK_IN/AWAY 已签到用 `stop`。
 
-取消成功的数字 data 原样保留；已核实官网前端将其显示为当天剩余取消次数，须知规定每天最多取消 3 次；取消时间限制以服务端结果为准。`current` 返回空字符串表示没有当前预约。如果用户要求“结束当前并重约”，按实时状态选择 cancel/stop，成功后重新查询座位和时段再 book；不保证无冷却或一定能重约。写操作报错或超时时先用 current/recent/history/life 核实，不自动重复提交，也不在取消结果不明时继续重约。
+- 需要预览或缺少目标预约 ID 时，直接运行对应的 `bnul cancel` / `bnul stop` 预览；成功结果已含当前预约 ID 和状态（JSON 的 `data.current.id` / `data.current.status`），无需先查 `current`。只有无法依据用户请求及已有信息确定应预览 `cancel` 还是 `stop` 时，才查一次 `current`。
+- 本次流程已有目标预约 ID、状态且用户已授权时，可直接 `bnul cancel --execute --expect-id MAKE_ID` 或 `bnul stop --execute --expect-id MAKE_ID`。CLI 执行前会重新读取并校验当前预约，无需再加预览或 `current`。
 
-服务端 stop 无预约 ID 参数，CLI 的 ID 校验只能缩小竞态窗口；操作期间不要并行更换预约。stop 会主动结束使用，不能当成无副作用的取消预览。
+两个命令不会自动互相转换，执行需匹配当前预约 ID。状态/ID 不匹配错误不一定带回完整预约，不能凭空提取 ID，也不要自动改成新 ID 重试。沿用用户已有取消/结束授权，不重复索取；仅提供抓包或要求开发功能不构成操作真实预约的授权。
 
-## CLI 缺失时安装
+取消成功的数字 data 原样保留；须知说明每日最多取消 3 次。取消时间限制以服务端结果为准。`current` 返回空字符串表示没有当前预约。如果用户要求“结束当前并重约”，按实时状态选择 cancel/stop，成功后重新查询座位和时段再 book；不保证无冷却或一定能重约。写请求可能已提交，但因超时、断连等无法判定结果时，选择 `current` 或 `recent` 中最相关的一项核实；确有缺失证据时再用 `history` 或 `life MAKE_ID`，不要按清单全部查询。仅 `current` 为空不能证明某次写操作成功。核实仍失败或证据不足时如实说明结果未知并停止，不循环查询、不重复提交，也不在取消/结束结果不明时继续重约。
 
-项目主页及最新安装说明：[KawaroX/bnul](https://github.com/KawaroX/bnul)。若 bnul 不存在，按该仓库 README 安装；链接失效时可搜索 GitHub 的 KawaroX/bnul，确认仓库身份后再使用，不安装未经确认的 PyPI 同名包。
-
-推荐 `uv tool install git+https://github.com/KawaroX/bnul.git`，然后 `uv tool update-shell`。也可用 `pipx install git+https://github.com/KawaroX/bnul.git` 和 `pipx ensurepath`。重开终端/任务使 PATH 生效，验证 `bnul --help`，再运行 `bnul auth install-browser`。安装 skill 用 `bnul skill install`。这些是全局可调用的隔离工具安装，不要求用户提供虚拟环境绝对路径。
-
-需要更详细的安装、PATH 和平台说明时，读取 [安装说明](references/installation.md) 或仓库 README。账号密码只在用户终端通过 `bnul auth setup` 配置，不在聊天中收集。
-
+服务端 stop 无预约 ID 参数，CLI 的 ID 校验只能缩小竞态窗口；操作期间不要并行更换预约。`bnul stop` 不带 `--execute` 只预览；`bnul stop --execute` 会主动结束使用，不能当成取消预览。
 
 ## 预约临期监控（0.5.2）
 
@@ -114,3 +184,11 @@ recommendations 为空且 searchExhausted=false 时，只能说“已检查的�
 保持普通业务命令同一份正式安装，不使用另一份过时代码。Linux 长期运行用随安装包发布的 deploy/linux/WATCH.md 与 systemd 模板；启用服务是实际自动操作，沿用用户已有授权。可用 BNUL_CREDENTIAL_ENV 指向服务器现有私有 dotenv，不因 SSH 进程没加载变量就断言服务器没有凭据；只检查配置与必要键是否可用，不输出秘密。
 
 登录恢复失败会保留退避状态并继续检查；异常、恢复和动作结果通知到明确配置的 Slack 会话，失败队列跨重启重试。独立 timer 检查监控心跳，不能用“进程 active”代替成功查询和实际通知回执。真实取消重约须有授权并记录前后预约 ID，不能通过结束 CHECK_IN 来验收。达到当日重约上限、取消配额为 0/未知时只释放并通知；不重试结果未知的写操作。
+
+## CLI 缺失时安装
+
+项目主页及最新安装说明：[KawaroX/bnul](https://github.com/KawaroX/bnul)。若 bnul 不存在，按该仓库 README 安装；链接失效时可搜索 GitHub 的 KawaroX/bnul，确认仓库身份后再使用，不安装未经确认的 PyPI 同名包。
+
+推荐 `uv tool install git+https://github.com/KawaroX/bnul.git`，然后 `uv tool update-shell`。也可用 `pipx install git+https://github.com/KawaroX/bnul.git` 和 `pipx ensurepath`。重开终端/任务使 PATH 生效，验证 `bnul --help`，再运行 `bnul auth install-browser`。安装 skill 用 `bnul skill install`。这些是全局可调用的隔离工具安装，不要求用户提供虚拟环境绝对路径。
+
+需要更详细的安装、PATH 和平台说明时，读取 [安装说明](references/installation.md) 或仓库 README。账号密码只在用户终端通过 `bnul auth setup` 配置，不在聊天中收集。

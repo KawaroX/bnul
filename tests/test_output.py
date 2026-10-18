@@ -135,14 +135,31 @@ class OutputTests(unittest.TestCase):
 
     def test_buildings_retains_deep_floor_identity_and_dates(self):
         data = {'dates': ['2026-09-15', '2026-09-16'], 'buildings': [
-            {'name': '主馆', 'id': '123', 'seTime': '07:00 _ 23:00', 'autoScale': 90,
-             'floors': [{'name': f'{i}层', 'id': str(500 + i), 'properties': {}} for i in range(25)],
+            {'name': '主馆', 'id': '123', 'number': 1, 'alias': 'b1',
+             'seTime': '07:00 _ 23:00', 'autoScale': 90,
+             'floors': [{'name': f'{i}层', 'id': str(500 + i), 'properties': {},
+                         'number': i or None, 'alias': f'f{i}' if i else None} for i in range(25)],
              'remark': ''}]}
         text = self.invoke(['buildings'], data)[1]
-        for value in ['2026-09-16', '07:00–23:00', '楼层: 24层；ID: 524']:
+        for value in ['2026-09-16', '别名: b1；ID: 123', '07:00–23:00',
+                      '楼层: 24层；别名: f24；ID: 524']:
             self.assertIn(value, text)
-        for value in ['autoScale', 'properties', '备注', '--json']:
+        for value in ['autoScale', 'properties', '备注', '--json', '编号', '序号']:
             self.assertNotIn(value, text)
+        self.assertEqual(json.loads(self.invoke(['--json', 'buildings'], data)[1])['data'], data)
+
+    def test_room_catalog_displays_one_alias_and_id_without_number_column(self):
+        data = {'rooms': [{'id': '123456789012', 'number': 1, 'alias': 'r1',
+                           'name': '教育学分馆108', 'shortName': '分馆108'},
+                          {'id': '999999999999', 'number': None, 'alias': None,
+                           'name': '新增区域', 'shortName': '新增'}]}
+        text = self.invoke(['room-list'], data)[1]
+        for value in ['别名 | 房间 | 房间ID', 'r1 | 教育学分馆108 | 123456789012',
+                      '新增区域 | 999999999999']:
+            self.assertIn(value, text)
+        for value in ['编号', '序号', 'shortName']:
+            self.assertNotIn(value, text)
+        self.assertEqual(json.loads(self.invoke(['--json', 'room-list'], data)[1])['data'], data)
 
     def test_room_facilities_keep_real_zeros(self):
         data = [{'id': '123', 'name': '3F自习区', 'seatTotal': 158, 'seatFree': 82,

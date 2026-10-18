@@ -71,31 +71,31 @@ def parser():
         a = sub.add_parser(name, help=description)
         a.add_argument('--page', type=int, default=1, help='页码，从 1 开始')
         a.add_argument('--page-size', type=int, default=10, help='每页数量，1–100，默认 10')
-    a = sub.add_parser('room-list', help='列出稳定序号、简称、房间名称和 ID')
-    a.add_argument('--building', type=identifier, default=BUILDING)
+    a = sub.add_parser('room-list', help='列出房间固定别名、名称和 ID')
+    a.add_argument('--building', default=BUILDING, help='楼馆固定别名或 ID')
     a = sub.add_parser('recommend', help='按完整自习时段推荐座位，只查询，不预约')
     a.add_argument('--date', type=day, default='today')
     a.add_argument('--start', type=start_minute, required=True, help='HH:MM 或 now/现在/-1')
     a.add_argument('--end', type=minute, required=True)
-    a.add_argument('--building', type=identifier, default=BUILDING)
-    a.add_argument('--floor', type=identifier, default='0')
+    a.add_argument('--building', default=BUILDING, help='楼馆固定别名或 ID')
+    a.add_argument('--floor', default='0', help='楼层固定别名或 ID；省略时查询全部楼层')
     group = a.add_mutually_exclusive_group()
-    group.add_argument('--room', help='房间 ID、清单序号、名称或唯一缩写')
-    group.add_argument('--room-order', help='依次搜索指定房间，例如 4,3,2 或 3F自习,2F自习')
-    group.add_argument('--room-sequence', help='紧凑序号顺序，例如 432；0 表示第 10 项')
+    group.add_argument('--room', help='房间固定别名或 ID')
+    group.add_argument('--room-order', help='依次搜索指定房间的固定别名或 ID，例如 r4,r3,r2')
+    group.add_argument('--room-sequence', help=argparse.SUPPRESS)
     a.add_argument('--limit', type=int, default=5, help='推荐数量，默认 5，最多 20')
     a.add_argument('--max-checks', type=int, default=50, help='最多逐座校验数量，默认 50，最多 200')
     for name in ('rooms', 'seats', 'times', 'book'):
         a = sub.add_parser(name)
         a.add_argument('--date', type=day, default='today')
         if name == 'rooms':
-            a.add_argument('--building', type=identifier, default=BUILDING)
-            a.add_argument('--floor', type=identifier, default='0')
+            a.add_argument('--building', default=BUILDING, help='楼馆固定别名或 ID')
+            a.add_argument('--floor', default='0', help='楼层固定别名或 ID；省略时查询全部楼层')
             a.add_argument('--power', action='store_true')
             a.add_argument('--windows', action='store_true')
         if name in ('seats', 'book'):
-            a.add_argument('--room', default=ROOM, help='房间 ID、序号、名称或唯一缩写')
-            a.add_argument('--building', type=identifier, default=BUILDING)
+            a.add_argument('--room', help='房间固定别名或 ID；仅主馆可省略，默认 r4')
+            a.add_argument('--building', default=BUILDING, help='楼馆固定别名或 ID')
         if name == 'seats':
             a.add_argument('--label', help='保留前导零，例如 008')
         if name in ('times', 'book'):
@@ -216,11 +216,21 @@ def run(args):
     if args.command in ('history', 'breach'):
         return c.api(f'user/{args.command}/{args.page}/{args.page_size}')
     if args.command == 'buildings':
-        return c.api('res/buildingFloorDate')
+        from .buildings import building_catalog
+        return building_catalog(c)
     if args.command in ('current', 'recent', 'life'):
         path = {'current': 'user/currentUseMake', 'recent': 'user/lastMake',
                 'life': 'user/makeLife/' + getattr(args, 'make_id', '')}[args.command]
         return c.api(path)
+    if hasattr(args, 'building'):
+        from .buildings import location_selector
+        args.building, floor = location_selector(c, args.building, getattr(args, 'floor', None))
+        if hasattr(args, 'floor'):
+            args.floor = floor
+    if args.command in ('seats', 'book') and args.room is None:
+        if args.building != BUILDING:
+            raise Error('选择主馆以外的楼馆时，请用 --room 指定该馆的房间', 'ROOM_REQUIRED')
+        args.room = ROOM
     if args.command == 'room-list' or (args.command == 'rooms' and args.start is None):
         from .rooms import room_catalog
         if args.command == 'rooms' and (args.power or args.windows):

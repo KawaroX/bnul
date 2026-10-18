@@ -13,6 +13,14 @@ FIXED_ROOMS = {'1887388460760797184': {
     '1888818842819465216': 7,
     '1888163731197759488': 8,
     '1888125623479668736': 9,
+}, '1864245010251223040': {
+    '1891371692804116480': 1,
+}, '1887389250929922048': {
+    '1891386957726060544': 1,
+    '1891395016556908544': 2,
+}, '2067149686880440320': {
+    '2067151136595480576': 1,
+    '2067523595068870656': 2,
 }}
 
 
@@ -62,9 +70,9 @@ def resolve_room(value, catalog):
     if len(matches) == 1:
         return matches[0]['id']
     if matches:
-        choices = '、'.join(f"{r['number']}: {r['name']}" for r in matches)
+        choices = '、'.join(f"{r.get('alias') or r['id']}: {r['name']}" for r in matches)
         raise Error('房间名称有歧义，请选择：' + choices, 'ROOM_AMBIGUOUS')
-    raise Error(f'找不到房间 {value}，请运行 room-list 查看当前编号与名称', 'ROOM_NOT_FOUND')
+    raise Error(f'找不到房间 {value}，请运行 room-list 查看固定别名与 ID', 'ROOM_NOT_FOUND')
 
 
 def room_selector(client, building, value):
@@ -77,12 +85,12 @@ def room_selector(client, building, value):
 def ordered_rooms(client, building, order=None, sequence=None):
     if sequence is not None:
         if not re.fullmatch(r'[0-9]+', sequence):
-            raise Error('room-sequence 只接受数字，例如 432；0 表示第 10 项')
+            raise Error('room-sequence 参数无效；请使用 --room-order r4,r3,r2')
         tokens = list(sequence)
     else:
         tokens = [part.strip() for part in re.split('[,，]', order or '')]
     if not tokens or any(not token for token in tokens):
-        raise Error('room-order 需要逗号分隔的房间序号或名称')
+        raise Error('room-order 需要逗号分隔的房间固定别名或 ID')
     catalog = room_catalog(client, building)
     selected = [resolve_room(token, catalog) for token in tokens]
     if len(set(selected)) != len(selected):

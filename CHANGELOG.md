@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.3
+
+- Add fixed bN building aliases and building-scoped fN floor aliases, sharing a single directory request when resolving both. Require an explicit room outside the main library for seats/book.
+- Extend fixed rN room aliases to all four known libraries. Show one canonical alias in CLI help, text catalogs and skill tables while preserving older selector syntax and JSON fields for compatibility.
+- Prefer aliases with ID discovery as a fallback, clarify the default main-library 3F study room for seats/book, and remove redundant current/catalog/booking-preview calls from the agent skill.
+
 ## 0.5.2
 
 - Parse the school's real `awayTime` representation as seconds since Beijing midnight; cross-check `awayTimeM` and `awayRange` when present. Retain explicit timestamp support and fail closed on conflicting fields.

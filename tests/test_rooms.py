@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock,patch
 from bnul.client import Error
-from bnul.rooms import room_catalog,resolve_room,ordered_rooms
+from bnul.rooms import room_catalog,resolve_room,ordered_rooms,room_selector
 
 class RoomTests(unittest.TestCase):
     def test_stable_numbers_across_refresh(self):
@@ -50,6 +50,63 @@ class RoomTests(unittest.TestCase):
         catalog=room_catalog(c,'123')
         self.assertIsNone(catalog['rooms'][0]['number'])
         with self.assertRaises(Error):resolve_room('4',catalog)
+    def test_branch_aliases_are_stable_across_order_changes_and_missing_rooms(self):
+        branches = {
+            '1864245010251223040': ['1891371692804116480'],
+            '1887389250929922048': ['1891386957726060544', '1891395016556908544'],
+            '2067149686880440320': ['2067151136595480576', '2067523595068870656'],
+        }
+        for building, ids in branches.items():
+            with self.subTest(building=building):
+                client = Mock()
+                client.rooms.return_value = [{'id': rid, 'name': f'房间{i}'} for i, rid in enumerate(ids)]
+                catalog = room_catalog(client, building)
+                for number, rid in enumerate(ids, 1):
+                    self.assertEqual(resolve_room(f'r{number}', catalog), rid)
+                    self.assertEqual(catalog['rooms'][number - 1]['alias'], f'r{number}')
+                client.rooms.return_value.reverse()
+                self.assertEqual(room_catalog(client, building), catalog)
+                client.rooms.return_value = [row for row in client.rooms.return_value if row['id'] != ids[0]]
+                client.rooms.return_value.append({'id': '999999999999', 'name': '新增房间'})
+                updated = room_catalog(client, building)
+                with self.assertRaises(Error) as caught:
+                    resolve_room('r1', updated)
+                self.assertEqual(caught.exception.code, 'ROOM_NOT_FOUND')
+                for number, rid in enumerate(ids[1:], 2):
+                    self.assertEqual(resolve_room(f'r{number}', updated), rid)
+                unknown = next(row for row in updated['rooms'] if row['id'] == '999999999999')
+                self.assertIsNone(unknown['number'])
+                self.assertIsNone(unknown['alias'])
+    def test_same_room_alias_is_scoped_to_selected_building(self):
+        first_rooms = {
+            '1887388460760797184': '1877586363089522688',
+            '1864245010251223040': '1891371692804116480',
+            '1887389250929922048': '1891386957726060544',
+            '2067149686880440320': '2067151136595480576',
+        }
+        client = Mock()
+        client.rooms.side_effect = lambda building, *_args: [{'id': first_rooms[building], 'name': '本馆房间'}]
+        for building, expected in first_rooms.items():
+            with self.subTest(building=building):
+                self.assertEqual(room_selector(client, building, 'r1'), expected)
+                self.assertEqual(client.rooms.call_args.args[0], building)
+        client.rooms.side_effect = None
+        client.rooms.return_value = [{'id': first_rooms['1887388460760797184'], 'name': '其他馆房间'}]
+        catalog = room_catalog(client, '1864245010251223040')
+        self.assertIsNone(catalog['rooms'][0]['alias'])
+        with self.assertRaises(Error):
+            resolve_room('r1', catalog)
+    def test_ambiguous_room_names_suggest_aliases_or_ids(self):
+        client = Mock()
+        client.rooms.return_value = [
+            {'id': '1891386957726060544', 'name': '教育学分馆108'},
+            {'id': '1891395016556908544', 'name': '教育学分馆149'},
+            {'id': '999999999999', 'name': '教育学分馆新增房间'},
+        ]
+        with self.assertRaises(Error) as caught:
+            resolve_room('教育学分馆', room_catalog(client, '1887389250929922048'))
+        for expected in ('r1: 教育学分馆108', 'r2: 教育学分馆149', '999999999999: 教育学分馆新增房间'):
+            self.assertIn(expected, str(caught.exception))
     def test_rooms_without_times_and_partial_times(self):
         from bnul.cli import parser,main
         args=parser().parse_args(['rooms'])
@@ -62,8 +119,8 @@ class CatalogCliTests(unittest.TestCase):
     def test_floor_filter_keeps_original_numbers(self):
         import io
         from bnul.cli import main
-        data={'rooms':[{'id':'a','number':4,'active':True,'floorId':'3'},
-                       {'id':'b','number':5,'active':True,'floorId':'4'}]}
+        data={'rooms':[{'id':'a','number':4,'active':True,'floorId':'123456789003'},
+                       {'id':'b','number':5,'active':True,'floorId':'123456789004'}]}
         with patch('bnul.cli.Client'),patch('bnul.rooms.room_catalog',return_value=data),patch('sys.stdout',new_callable=io.StringIO) as out:
-            self.assertEqual(main(['--json','rooms','--floor','3']),0)
+            self.assertEqual(main(['--json','rooms','--floor','123456789003']),0)
             self.assertEqual([r['number'] for r in json.loads(out.getvalue())['data']['rooms']],[4])

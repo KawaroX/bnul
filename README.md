@@ -29,7 +29,7 @@ pipx install git+https://github.com/KawaroX/bnul.git
 pipx ensurepath
 ```
 
-重开终端后运行同样的 `bnul` 命令。以上命令适用于 Windows PowerShell、macOS 和 Linux。无需填写 Python 或 CLI 绝对路径。若需要固定版本，将安装 URL 改为 `git+https://github.com/KawaroX/bnul.git@v0.5.2`。
+重开终端后运行同样的 `bnul` 命令。以上命令适用于 Windows PowerShell、macOS 和 Linux。无需填写 Python 或 CLI 绝对路径。若需要固定版本，将安装 URL 改为 `git+https://github.com/KawaroX/bnul.git@v0.5.3`。
 
 Linux 缺少浏览器系统库时执行 `bnul auth install-browser --with-deps`，系统依赖安装可能要求管理员权限。默认使用上述命令安装的 Chromium；也可通过 `BNUL_BROWSER=chrome` 或 `msedge` 使用已安装的 Chrome/Edge。
 
@@ -95,40 +95,58 @@ bnul --transport webvpn current
 
 可在 `~/.config/bnul/settings.json` 配置 `transport`、`browser_executable`、`webvpn_profile`、`qr_directory`；对应环境变量分别是 `BNUL_TRANSPORT`、`BNUL_BROWSER_EXECUTABLE`、`BNUL_WEBVPN_PROFILE`、`BNUL_QR_DIR`，环境变量优先。`BNUL_SETTINGS` 可指定设置文件。已有独立 Chrome 可以直接复用可执行文件，不读取个人浏览器资料。
 
-## 房间清单与简便选择
+## 楼馆、楼层与房间别名
+
+每个已登记位置提供一个固定别名，对应一个官方 ID。日常使用别名即可；楼层和房间的别名按所选楼馆解析。旧版参数写法继续兼容，新示例统一使用别名。
+
+| 别名 | 楼馆 |
+| --- | --- |
+| `b1` | 主馆 |
+| `b2` | 主馆南区 |
+| `b3` | 教育学分馆 |
+| `b4` | 沙河 |
+
+| 别名 | 楼层 |
+| --- | --- |
+| `f1` | 1 层 |
+| `f2` | 2 层 |
+| `f3` | 3 层 |
+| `f4` | 4 层 |
+| `f5` | 5 层 |
+| `f6` | 6 层 |
+| `f7` | 7 层 |
+| `f8` | 8 层 |
+
+楼层别名用于 `rooms` / `recommend`，省略 `--floor` 表示全部楼层。2026-10-18 核对的范围：主馆 `f1`–`f8`；主馆南区 `f3`；教育学分馆 `f1`；沙河 `f1`–`f2`。别名固定对应实际层数，不按接口返回顺序编号。
+
+主馆房间：
+
+| 别名 | 房间 |
+| --- | --- |
+| `r1` | 1F 师樾厅 |
+| `r2` | 2F 自习区 |
+| `r3` | 3F 多媒体中心 |
+| `r4` | 3F 自习区 |
+| `r5` | 4F 借阅区 |
+| `r6` | 5F 借阅区 |
+| `r7` | 6F 阅览区 |
+| `r8` | 7F 阅览区 |
+| `r9` | 8F 借阅区 |
+
+其他楼馆的房间同样有固定别名：主馆南区 `r1` 为工具报刊外文阅览区；教育学分馆 `r1`、`r2` 分别为 108、149；沙河 `r1`、`r2` 分别为 G 区分馆一层、二层。完整分馆表见 [skill](skills/bnu-library/SKILL.md#房间别名)。房间别名由代码固定，不随清单排序、安装时间或本机配置变化；新位置不会自动分配别名。
 
 ```sh
-bnul room-list
-bnul rooms                  # 不带时段：同样显示清单
-bnul --json room-list        # 需要完整结构化字段时使用
+bnul seats --room r4 --date tomorrow --start 19:00 --end 21:00
+bnul recommend --building b1 --floor f3 --date tomorrow --start 19:00 --end 21:00
+bnul rooms --building b2 --floor f3
+bnul seats --building b3 --room r1 --date tomorrow --start 19:00 --end 21:00
 ```
 
-清单提供序号、别名（r1 等）、短名称、全名、ID。`--room` 不再只接受长 ID：
+优先使用别名，无需先列清单。别名无法识别或位置未列出时，用 `bnul buildings` 获取楼馆、楼层 ID；用 `bnul room-list --building 别名或ID` 获取房间 ID，再将返回的 ID 传给对应参数。清单文本显示名称、别名和 ID；JSON 保留完整字段，包括旧版兼容字段。名称仅用于辨认位置，表格不代表实时有空位。
 
-```sh
-bnul seats --room '3F自习' --date tomorrow --start 19:00 --end 21:00
-bnul recommend --room 4 --date tomorrow --start 19:00 --end 21:00
-```
+CLI 解析楼馆与楼层别名时共用一次实时目录查询，完整 ID 不新增目录请求。未知、歧义或禁用位置不会改选其他位置。主馆 `seats` / `book` 默认使用 `r4`；其他楼馆必须指定 `--room`。`recommend` 未指定房间时在所选楼馆跨房间搜索。
 
-从 0.3.1 起，主馆编号由代码统一固定，所有用户一致，不受安装时间、接口返回顺序或本机配置影响。`--room 4` 和 `--room r4` 都代表 3F 自习区。
-
-| 编号 | 区域 | 官方房间 ID |
-| --- | --- | --- |
-| 1 | 1F 师樾厅（朗读区） | 1877586363089522688 |
-| 2 | 2F 自习区（低声区） | 1887370822454185984 |
-| 3 | 3F 多媒体中心（安静区） | 1887410836445696000 |
-| 4 | 3F 自习区（低声区、朗读区） | 1888096971220160512 |
-| 5 | 4F 借阅区 | 1888143784337838080 |
-| 6 | 5F 借阅区 | 1891313130644017152 |
-| 7 | 6F 阅览区 | 1888818842819465216 |
-| 8 | 7F 阅览区 | 1888163731197759488 |
-| 9 | 8F 借阅区 | 1888125623479668736 |
-
-名称支持全名、去除括号说明的短名、唯一匹配片段；歧义会列出候选。实时清单仍从官网获取，编号不代表有空位。未知区域或尚未配置编号的楼馆显示 `-`（JSON 的 number/alias 为 null），可用名称或官方 ID，不自动分配编号。已有编号不重排、不复用。
-
-升级后旧版 `rooms-楼馆ID.json` 不再读取或写入，无需手动删除。如果以前使用了本机自定义顺序，请按上表核对保存的偏好。0 仍兼容代指编号 10，但主馆目前只有 1–9，没有可选的 10。
-
-seats、book、recommend 都支持这些选择方式；其他楼馆加 `--building ID`。原有 rooms --start/--end 的时段查询仍保留，两个时间参数须同时提供。
+`book` 不需要 `--floor`：CLI 按房间确认目标座位，再校验该座位的时段；最终预约接口只需要座位和时段。楼层参数用于查找房间、推荐座位时缩小范围。
 
 ## 按自习计划推荐座位
 
@@ -143,18 +161,16 @@ seats、book、recommend 都支持这些选择方式；其他楼馆加 `--buildi
 ```sh
 bnul recommend --date today --start 19:00 --end 21:00
 bnul recommend --date today --start now --end 22:00
-bnul recommend --date tomorrow --start 19:00 --end 21:00 --room 1888096971220160512
+bnul recommend --date tomorrow --start 19:00 --end 21:00 --room r4
 ```
 
 默认查主馆，推荐 5 个候选，跨房间逐座检查，最多校验 50 座；可指定 --building/--floor/--room，以及 --limit/--max-checks（最多 200）。默认不预设个人区域偏好，跨区域轮流检查。若偏好某些区域，可以指定顺序：
 
 ```sh
-bnul recommend --date today --start now --end 22:00 --room-order '4,3,2'
-bnul recommend --date today --start now --end 22:00 --room-order '3F自习,2F自习'
-bnul recommend --date today --start now --end 22:00 --room-sequence 432
+bnul recommend --date today --start now --end 22:00 --room-order 'r4,r3,r2'
 ```
 
-指定顺序时严格先查首选区域，该区域候选查完才到下一项，找到足够结果或达到检查上限即停，只查列出的区域。room-sequence 每位代表一个序号，0 表示10；room-order 10 表示第10项，而 room-sequence 10 表示第1、10项。超过10的序号用逗号列表。与 --room 互斥；重复、未知或与楼层范围冲突的区域会报错。每个候选均校验服务器返回的开始、结束时间，覆盖完整计划时段。输出位置、座位号、理由与校验时间，不使用当前空闲状态代替完整时段校验，也不编造靠窗/插座等属性。
+指定顺序时严格先查首选区域，该区域候选查完才到下一项，找到足够结果或达到检查上限即停，只查列出的区域。与 --room 互斥；重复、未知或与楼层范围冲突的区域会报错。每个候选均校验服务器返回的开始、结束时间，覆盖完整计划时段。输出位置、座位号、理由与校验时间，不使用当前空闲状态代替完整时段校验，也不编造靠窗/插座等属性。
 
 若达到检查上限，searchExhausted=false，不能把暂未找到理解为全馆无座。候选仅反映查询时的可选时段，不保证账号资格或稍后仍可预约。推荐命令不创建预约；决定后再运行 book --execute。
 
@@ -178,8 +194,8 @@ bnul recommend --date today --start now --end 22:00 --room-sequence 432
 文本没有条数、字段数、深度或字符数截断，也不反复提示切换 JSON。历史记录仍按接口分页，推荐仍受用户指定的搜索上限控制；未查完时保留相应说明。空字符串、null 和空容器不输出字段，0 和 false 正常展示。
 
 ```sh
-bnul seats --room '3F自习' --label 008 --start now --end 15:00
-bnul --json seats --room '3F自习' --start now --end 15:00 > seats.json
+bnul seats --room r4 --label 008 --start now --end 15:00
+bnul --json seats --room r4 --start now --end 15:00 > seats.json
 ```
 
 JSON 的“完整”指该命令查询范围内的结果，不是所有底层 HTTP 响应的原样抓包。筛选、分页和推荐搜索上限仍生效；展示层不会为了缩短输出删除 JSON 字段或截断记录。不带 `--json` 的旧版缩进 JSON 已改为文本摘要，依赖结构化输出的脚本请显式加 `--json`。两种格式执行相同业务逻辑，切换格式不会增加查询或重复提交。
@@ -196,7 +212,7 @@ bnul recent
 bnul life 预约ID
 ```
 
-默认主馆、3F 自习区（低声区、朗读区），可指定 `--building`、`--floor`、`--room`。日期支持 today/tomorrow/YYYY-MM-DD，使用上海时区。固定时间为 HH:MM，通常只能选择整点或半点，必须出现在服务器可选列表中，不支持跨天。“现在”使用 `--start now`（也支持 `--start 现在` 或 `--start=-1`），仅限今天。查询结束时间时使用当前上海时间的分钟数，提交预约时严格发送 -1。记录中出现 14:04 代表实际落定的开始时间，不证明可以直接提交任意分钟。以实时可选时段为准；当前 IN_USE 不代表未来不可约，afterFree 也不保证整个目标时段可约。
+默认楼馆为主馆；`seats` / `book` 默认房间为 `r4`，`rooms` / `recommend` 默认跨房间查询。楼层筛选仅用于 `rooms` / `recommend`，完整选择规则见前文“楼馆、楼层与房间别名”。日期支持 today/tomorrow/YYYY-MM-DD，使用上海时区。固定时间为 HH:MM，通常只能选择整点或半点，必须出现在服务器可选列表中，不支持跨天。“现在”使用 `--start now`（也支持 `--start 现在` 或 `--start=-1`），仅限今天。查询结束时间时使用当前上海时间的分钟数，提交预约时严格发送 -1。记录中出现 14:04 代表实际落定的开始时间，不证明可以直接提交任意分钟。以实时可选时段为准；当前 IN_USE 不代表未来不可约，afterFree 也不保证整个目标时段可约。
 
 ```sh
 # 从现在开始（默认仅预览）
@@ -222,7 +238,7 @@ bnul stop --execute --expect-id 预约ID
 
 取消成功返回的数字保留原值；已核实官网前端将它显示为当天剩余取消次数。取消时间限制由服务端判定，不凭 `cancelMinute` 字段名推导。取消后 `current` 可能返回空字符串，表示没有当前预约。需要重新预约时重新校验可选时段，不保证座位仍可用或一定允许重约。
 
-成功预约不等于签到，按服务端 message 完成签到。RESERVE 是待签到，CHECK_IN 是使用中，AWAY 是暂离，STOP 是结束。普通命令不自动取消原预约；显式启用 watch --execute 后按下文规则处理临期预约，不绕过验证码。写操作先检查会话；请求提交后若失败不自动重放，应查 current/recent 确认结果。服务端 stop 无 ID 参数，本地 ID 检查无法完全消除并发更换预约的竞态。
+成功预约不等于签到，按服务端 message 完成签到。RESERVE 是待签到，CHECK_IN 是使用中，AWAY 是暂离，STOP 是结束。普通命令不自动取消原预约；显式启用 watch --execute 后按[监控规则](deploy/linux/WATCH.md)处理临期预约，不绕过验证码。写操作先检查会话；结果不明时，选择 current/recent 中最相关的一项查询核实，不自动重放。服务端 stop 无 ID 参数，本地 ID 检查无法完全消除并发更换预约的竞态。
 
 `--json` 输出结构为 `ok/data` 或 `ok/error/code/data`，失败退出码非零。全局参数放在子命令前；系统代理不可用时加 `--no-proxy`，例如 `bnul --no-proxy current`。TLS 校验始终开启。
 
