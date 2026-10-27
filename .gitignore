@@ -8,3 +8,5 @@ build/
 *.py[cod]
 installed-skill/
 .DS_Store
+docs/releases/
+docs/incidents/2026-10-14-signing.md
