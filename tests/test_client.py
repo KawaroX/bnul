@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 from bnul.client import Client, Error, minute, day, signed_headers, signing_key, save_token
-from bnul.cli import main, imported_token
+from bnul.cli import main
 
 class FakeClient(Client):
     def __init__(self, mode=0):
@@ -48,6 +48,7 @@ class Tests(unittest.TestCase):
         c=FakeClient()
         self.assertTrue(c.validate_booking('123','2026-09-09',840,990)['validated'])
         self.assertFalse(any('freeBook' in p for p,b in c.calls))
+        self.assertFalse(any('getTimeLine' in p for p,b in c.calls))
         for start,end in [(845,990),(840,1000),(990,844)]:
             with self.assertRaises(Error): c.validate_booking('123','2026-09-09',start,end)
 
@@ -66,8 +67,7 @@ class Tests(unittest.TestCase):
             self.assertEqual(caught.exception.data,{'ctId':'123'})
             op.assert_called_once()
 
-    def test_token_import_and_permissions(self):
-        self.assertEqual(imported_token("curl 'https://example' -H 'token: abc'"),'abc')
+    def test_session_file_permissions(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ,{'BNUL_CONFIG':tmp+'/auth.json'}):
             save_token('abc')
             self.assertEqual(json.loads(Path(tmp+'/auth.json').read_text())['token'],'abc')
@@ -98,7 +98,7 @@ class BrowserAuthTests(unittest.TestCase):
             self.assertIsNone(session_request_token(url,{'token':'session'}))
     def test_login_command(self):
         with patch('bnul.browser_auth.browser_login',return_value={'saved':True}) as login, patch('sys.stdout',new_callable=io.StringIO):
-            self.assertEqual(main(['--no-proxy','login']),0)
+            self.assertEqual(main(['--no-proxy','auth','login']),0)
             login.assert_called_once_with(True,300)
 
 @unittest.skipUnless(__import__("importlib.util", fromlist=["find_spec"]).find_spec("playwright"), "optional browser dependency")
@@ -121,35 +121,118 @@ class BrowserFlowTests(unittest.TestCase):
             context.close.assert_called_once()
 
 class AuthCommandTests(unittest.TestCase):
-    def test_both_login_commands_use_browser(self):
-        for argv in [['login'], ['auth','login']]:
-            with patch('bnul.browser_auth.browser_login',return_value={}) as login, patch('sys.stdout',new_callable=io.StringIO):
-                self.assertEqual(main(argv),0)
-                login.assert_called_once_with(False,300)
-    def test_legacy_file_has_migration_error(self):
-        with patch('bnul.browser_auth.browser_login') as browser, patch('sys.stdout',new_callable=io.StringIO) as out:
-            self.assertEqual(main(['--json','auth','login','--file','old.txt']),1)
-            browser.assert_not_called()
-            self.assertIn('exchange-link',out.getvalue())
-    def test_url_parser_preserves_jwt_and_ignores_fragment(self):
-        from bnul.cli import login_link_token
-        token='abc.def.ghi_-'
-        url='https://libseat.bnu.edu.cn/jsq-v/?token='+token+'#'
-        for text in [url,'[link]('+url+')']:
-            self.assertEqual(login_link_token(text),token)
-        with self.assertRaises(Error): login_link_token(url.replace('#','&token=second'))
-    def test_exchange_request_matches_frontend(self):
-        with patch('bnul.cli.read_secret',return_value='https://libseat.bnu.edu.cn/jsq-v/?token=abc.def.ghi#'), patch('bnul.cli.Client') as client, patch('bnul.cli.save_token') as save, patch('sys.stdout',new_callable=io.StringIO):
-            client.return_value.request.return_value={'token':'session'}
-            self.assertEqual(main(['auth','exchange-link']),0)
-            client.return_value.request.assert_called_once_with('/static/public/auth/cas/abc.def.ghi',{'token':'abc.def.ghi','loginType':'PC'},public=True)
-            save.assert_called_once_with('session')
-    def test_exchange_preserves_server_error(self):
-        with patch('bnul.cli.read_secret',return_value='https://libseat.bnu.edu.cn/jsq-v/?token=abc.def.ghi#'), patch('bnul.cli.Client') as client, patch('sys.stdout',new_callable=io.StringIO) as out:
-            client.return_value.request.side_effect=Error('casToken异常',500)
-            self.assertEqual(main(['--json','auth','exchange-link']),1)
-            self.assertIn('casToken异常',out.getvalue())
-            self.assertIn('具体原因尚未确认',out.getvalue())
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        self.root=Path(self.tmp.name)
+        env=patch.dict(os.environ,{'BNUL_CONFIG':str(self.root/'bnul/session.json'),'BNUL_SETTINGS':str(self.root/'bnul/settings.json'),
+                                   'BNUL_WEBVPN_PROFILE':str(self.root/'webvpn')},clear=True)
+        env.start(); self.addCleanup(env.stop)
+    def test_removed_commands_are_rejected(self):
+        for argv in [['login'],['auth','import'],['auth','exchange-link'],['auth','clear'],['auth','forget']]:
+            with patch('bnul.browser_auth.browser_login') as login, patch('sys.stderr',new_callable=io.StringIO), self.assertRaises(SystemExit):
+                main(argv)
+            login.assert_not_called()
+    def test_global_options_accepted_after_subcommand(self):
+        with patch('bnul.browser_auth.browser_login',return_value={}) as login, patch('sys.stdout',new_callable=io.StringIO) as out:
+            self.assertEqual(main(['auth','login','--no-proxy','--json']),0)
+            login.assert_called_once_with(True,300)
+            self.assertTrue(json.loads(out.getvalue())['ok'])
+    def test_browser_flag_is_saved_for_automatic_login(self):
+        from bnul.browser_auth import browser_options
+        settings=self.root/'bnul/settings.json'; settings.parent.mkdir()
+        settings.write_text(json.dumps({'transport':'auto','browser_executable':str(self.root/'missing')}))
+        with patch('bnul.browser_auth.browser_login',return_value={}), patch('sys.stdout',new_callable=io.StringIO):
+            self.assertEqual(main(['auth','login','--browser','chrome']),0)
+        self.assertEqual(json.loads(settings.read_text()),{'transport':'auto','browser_executable':str(self.root/'missing'),'browser':'chrome'})
+        self.assertEqual(browser_options(),{'channel':'chrome'})
+        with patch.dict(os.environ,{'BNUL_BROWSER':'msedge'}): self.assertEqual(browser_options(),{'channel':'msedge'})
+    def test_logout_removes_password_session_and_browser_state(self):
+        session=self.root/'bnul/session.json'; profile=self.root/'bnul/browser-profile'; vpn=self.root/'webvpn'
+        for directory in (profile, vpn/'browser-profile'): directory.mkdir(parents=True)
+        for path in (session, profile/'Cookies', vpn/'cookies.txt', vpn/'unrelated.txt'): path.write_text('x')
+        with patch('bnul.credentials.backend') as backend, patch('sys.stdout',new_callable=io.StringIO) as out:
+            backend.return_value.get_password.return_value='{}'
+            self.assertEqual(main(['--json','auth','logout']),0)
+            backend.return_value.delete_password.assert_called_once()
+        data=json.loads(out.getvalue())['data']
+        self.assertTrue(data['loggedOut']); self.assertTrue(data['credentialsRemoved'])
+        self.assertFalse(any(p.exists() for p in (session, profile, vpn/'cookies.txt', vpn/'browser-profile')))
+        self.assertTrue((vpn/'unrelated.txt').exists())
+    def test_logout_reports_environment_credentials_and_keyring_failure(self):
+        with patch.dict(os.environ,{'BNUL_USERNAME':'test','BNUL_PASSWORD':'test'}), patch('bnul.credentials.backend',side_effect=Error('unavailable','CREDENTIALS_UNAVAILABLE')), patch('sys.stdout',new_callable=io.StringIO) as out:
+            self.assertEqual(main(['--json','auth','logout']),0)
+        data=json.loads(out.getvalue())['data']
+        self.assertFalse(data['loggedOut']); self.assertTrue(data['environmentCredentialsPresent']); self.assertIn('credentialError',data)
+    def test_status_reports_credential_source_without_secret(self):
+        with patch.dict(os.environ,{'BNUL_USERNAME':'student','BNUL_PASSWORD':'test-only'}), patch('bnul.cli.Client') as cls, patch('sys.stdout',new_callable=io.StringIO) as out:
+            cls.return_value.network.mode='direct'
+            cls.return_value.bootstrap.side_effect=Error('没有本地会话','LOCAL_AUTH_MISSING')
+            self.assertEqual(main(['--json','auth','status']),0)
+            self.assertFalse(cls.return_value.auto_auth)
+        data=json.loads(out.getvalue())['data']
+        self.assertEqual((data['authenticated'],data['credentials'],data['browser'],data['reasonCode']),(False,'环境变量','chromium','LOCAL_AUTH_MISSING'))
+        self.assertNotIn('test-only',out.getvalue())
+        with patch.dict(os.environ,{'BNUL_USERNAME':'student','BNUL_PASSWORD':'test-only'}), patch('bnul.cli.Client') as cls, patch('sys.stdout',new_callable=io.StringIO) as out:
+            cls.return_value.network.mode='direct'
+            cls.return_value.bootstrap.side_effect=Error('没有本地会话','LOCAL_AUTH_MISSING')
+            self.assertEqual(main(['auth','status']),0)
+        self.assertIn('登录状态: 未登录',out.getvalue()); self.assertIn('后台自动登录',out.getvalue())
+    def test_status_shows_account_without_contact_details_or_key(self):
+        info={'username':'202621040038','fullName':'测试','flagName':'研究生','maxMinute':900,'breachNum':2,
+              'phone':'13800000000','email':'a@b.c','hmacKey':'secret-key','totalTime':11074}
+        with patch('bnul.cli.Client') as cls, patch('bnul.credentials.backend') as backend, patch('sys.stdout',new_callable=io.StringIO) as out:
+            backend.return_value.get_password.return_value=None
+            cls.return_value.network.mode='direct'; cls.return_value.api.return_value=info
+            self.assertEqual(main(['auth','status']),0)
+        text=out.getvalue()
+        for shown in ('登录状态: 已登录','202****40038','测试','单次最长预约: 15 小时','违约次数: 2','184 小时 34 分钟','自动登录凭据: 未配置'):
+            self.assertIn(shown,text)
+        for hidden in ('13800000000','a@b.c','secret-key','202621040038'):
+            self.assertNotIn(hidden,text)
+    def test_setup_falls_back_to_private_file_only_after_confirmation(self):
+        from bnul.credentials import get_credentials
+        unavailable=Error('无法将登录凭据保存到 系统凭据存储','CREDENTIALS_UNAVAILABLE')
+        path=self.root/'bnul/credentials.env'
+        with patch('bnul.credentials.store_credentials',side_effect=unavailable), patch('builtins.input',side_effect=['student','n']), patch('getpass.getpass',return_value='p"w\\ #1'), patch('sys.stdout',new_callable=io.StringIO), patch('sys.stderr',new_callable=io.StringIO):
+            self.assertEqual(main(['auth','setup']),1)
+        self.assertFalse(path.exists())
+        with patch('bnul.credentials.store_credentials',side_effect=unavailable), patch('builtins.input',side_effect=['student','y']), patch('getpass.getpass',return_value='p"w\\ #1'), patch('sys.stdout',new_callable=io.StringIO) as out, patch('sys.stderr',new_callable=io.StringIO):
+            self.assertEqual(main(['auth','setup']),0)
+        self.assertIn('凭据文件',out.getvalue())
+        if os.name!='nt': self.assertEqual(path.stat().st_mode & 0o777,0o600)
+        with patch('bnul.credentials.backend') as backend:
+            self.assertEqual(get_credentials(),{'username':'student','password':'p"w\\ #1'})
+            backend.assert_not_called()
+        with patch('bnul.credentials.backend') as backend, patch('sys.stdout',new_callable=io.StringIO):
+            backend.return_value.get_password.return_value=None
+            self.assertEqual(main(['auth','logout']),0)
+        self.assertFalse(path.exists())
+    def test_keyring_setup_removes_stale_fallback_file(self):
+        from bnul.credentials import store_credentials, store_credentials_file
+        path=store_credentials_file('student','old')
+        with patch('bnul.credentials.backend'):
+            store_credentials('student','new')
+        self.assertFalse(path.exists())
+
+class LifeCommandTests(unittest.TestCase):
+    def test_life_defaults_to_current_reservation(self):
+        with patch('bnul.cli.Client') as cls, patch('sys.stdout',new_callable=io.StringIO) as out:
+            c=cls.return_value
+            c.api.side_effect=lambda path: {'id':123,'status':'CHECK_IN'} if path=='user/currentUseMake' else [{'status':'CHECK_IN'}]
+            self.assertEqual(main(['life']),0)
+            self.assertEqual([call.args[0] for call in c.api.call_args_list],['user/currentUseMake','user/makeLife/123'])
+            self.assertIn('预约ID: 123',out.getvalue())
+    def test_life_without_current_reservation_fails(self):
+        with patch('bnul.cli.Client') as cls, patch('sys.stdout',new_callable=io.StringIO) as out:
+            c=cls.return_value; c.api.return_value=None
+            self.assertEqual(main(['--json','life']),1)
+            c.api.assert_called_once_with('user/currentUseMake')
+            self.assertEqual(json.loads(out.getvalue())['code'],'NO_CURRENT_RESERVATION')
+    def test_life_with_id_skips_current_lookup(self):
+        with patch('bnul.cli.Client') as cls, patch('sys.stdout',new_callable=io.StringIO):
+            c=cls.return_value; c.api.return_value=[]
+            self.assertEqual(main(['life','456']),0)
+            c.api.assert_called_once_with('user/makeLife/456')
 
 class AutoAuthTests(unittest.TestCase):
     def test_expired_read_restored_once(self):
@@ -249,7 +332,8 @@ class InstallationTests(unittest.TestCase):
             result=install_skill(temp)
             self.assertEqual(result['installed'],temp)
             self.assertTrue((Path(temp)/'SKILL.md').is_file())
-            self.assertTrue((Path(temp)/'references/installation.md').is_file())
+            for name in ('installation', 'webvpn', 'auth', 'watch'):
+                self.assertTrue((Path(temp)/f'references/{name}.md').is_file())
     def test_browser_installs_in_cli_python(self):
         from bnul.install import install_browser
         import sys
@@ -282,27 +366,27 @@ class NowTests(unittest.TestCase):
         with self.assertRaises(Error):FakeClient().validate_booking('123','2026-09-09',844,990)
     def test_now_matched_as_string_not_integer(self):
         c=FakeClient()
-        c.times=lambda seat,date,start:{'starts':[['now','现在'],['960','16:00']],'ends':[['990','16:30']]}
+        c.times=lambda seat,date,start,**_:{'starts':[['now','现在'],['960','16:00']],'ends':[['990','16:30']]}
         with patch('bnul.client.query_start',return_value=941):
             result=c.validate_booking('123','2026-09-09',-1,990)
         self.assertTrue(result['validated'])
         self.assertEqual(result['beginMinute'],-1)
     def test_now_missing_from_starts_rejects(self):
         c=FakeClient()
-        c.times=lambda seat,date,start:{'starts':[['960','16:00']],'ends':[['990','16:30']]}
+        c.times=lambda seat,date,start,**_:{'starts':[['960','16:00']],'ends':[['990','16:30']]}
         with patch('bnul.client.query_start',return_value=941):
             with self.assertRaises(Error) as ctx:
                 c.validate_booking('123','2026-09-09',-1,990)
             self.assertEqual(ctx.exception.code,'TIME_UNAVAILABLE')
     def test_now_not_confused_with_numeric_zero(self):
         c=FakeClient()
-        c.times=lambda seat,date,start:{'starts':[['0','00:00']],'ends':[['60','01:00']]}
+        c.times=lambda seat,date,start,**_:{'starts':[['0','00:00']],'ends':[['60','01:00']]}
         with patch('bnul.client.query_start',return_value=0):
             with self.assertRaises(Error):
                 c.validate_booking('123','2026-09-09',-1,60)
     def test_fixed_start_matched_as_integer_string(self):
         c=FakeClient()
-        c.times=lambda seat,date,start:{'starts':[['960','16:00']],'ends':[['990','16:30']]}
+        c.times=lambda seat,date,start,**_:{'starts':[['960','16:00']],'ends':[['990','16:30']]}
         result=c.validate_booking('123','2026-09-09',960,990)
         self.assertTrue(result['validated'])
 

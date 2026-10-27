@@ -248,10 +248,10 @@ class Client:
         return self.api(f'res/freeSeatIdsDuration/{identifier(room)}/{day(date)}',
                         {'beginMinute': query_start(start, date), 'endMinute': end, 'minMinute': 0})
 
-    def times(self, seat, date, start=None):
+    def times(self, seat, date, start=None, timeline=True):
         suffix = f'{identifier(seat)}/{day(date)}'
-        result = {'timeline': self.api('res/getTimeLine/' + suffix),
-                  'starts': self.api('res/getStartTimes/' + suffix)}
+        result = {'timeline': self.api('res/getTimeLine/' + suffix)} if timeline else {}
+        result['starts'] = self.api('res/getStartTimes/' + suffix)
         if start is not None:
             result['ends'] = self.api(f'res/getEndTimes/{suffix}/{query_start(start, date)}')
         return result
@@ -259,7 +259,8 @@ class Client:
     def validate_booking(self, seat, date, start, end):
         if not 0 <= query_start(start, date) < end < 1440:
             raise Error('结束时间必须晚于开始时间，且不可跨天')
-        times = self.times(seat, date, start)
+        # Only the selectable starts/ends decide validity; the display timeline costs a request.
+        times = self.times(seat, date, start, timeline=False)
         if ('now' if start == -1 else str(start)) not in {str(row[0]) for row in times['starts']}:
             raise Error('开始时间不可选，请查看 times 返回的 starts', 'TIME_UNAVAILABLE')
         if str(end) not in {str(row[0]) for row in times['ends']}:

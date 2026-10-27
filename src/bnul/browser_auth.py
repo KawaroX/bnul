@@ -59,17 +59,61 @@ def submit_credentials(page, credentials, network=None):
 
 
 def browser_options():
+    # Environment first, then the choice saved by auth setup/login --browser, then a configured executable.
     from .network import settings
-    executable = os.environ.get('BNUL_BROWSER_EXECUTABLE') or settings().get('browser_executable')
+    configured = settings()
+    selected = os.environ.get('BNUL_BROWSER')
+    executable = os.environ.get('BNUL_BROWSER_EXECUTABLE') or (
+        None if selected or configured.get('browser') else configured.get('browser_executable'))
     if executable:
         from pathlib import Path
         if not Path(executable).expanduser().is_file():
             raise Error('配置的浏览器可执行文件不存在', 'CONFIG_INVALID')
         return {'executable_path': str(Path(executable).expanduser())}
-    selected = os.environ.get('BNUL_BROWSER', 'chromium')
+    selected = selected or configured.get('browser', 'chromium')
     if selected not in ('chrome', 'msedge', 'chromium'):
-        raise Error('BNUL_BROWSER 必须是 chrome、msedge 或 chromium')
+        raise Error('浏览器必须是 chrome、msedge 或 chromium（BNUL_BROWSER 或 auth login --browser）', 'CONFIG_INVALID')
     return {} if selected == 'chromium' else {'channel': selected}
+
+
+def browser_name():
+    options = browser_options()
+    return options.get('executable_path') or options.get('channel', 'chromium')
+
+
+def logout():
+    """Remove every local trace of the account so nothing can log back in silently."""
+    import shutil
+    from .network import webvpn_profile
+    from .credentials import credential_file, forget_credentials
+    result = {'loggedOut': True}
+    try:
+        result['credentialsRemoved'] = forget_credentials()
+    except Error as exc:
+        result.update({'credentialsRemoved': False, 'credentialError': str(exc)})
+    webvpn = webvpn_profile()
+    removed = []
+    # Only files bnul itself writes; a configured profile directory is never removed wholesale.
+    for path in (credential_file(), config_path(), webvpn / 'cookies.txt', webvpn / 'login-status.json'):
+        if path.is_file():
+            path.unlink()
+            removed.append(str(path))
+    for path in (config_path().parent / 'browser-profile', webvpn / 'browser-profile'):
+        if path.is_dir():
+            try:
+                shutil.rmtree(path)
+            except OSError:
+                raise Error('无法删除登录浏览器资料，可能有登录窗口或监控正在使用；关闭后重试',
+                            'LOGOUT_INCOMPLETE', {**result, 'removed': removed}) from None
+            removed.append(str(path))
+    result['removed'] = removed
+    result['loggedOut'] = 'credentialError' not in result
+    from .env import env_value
+    if env_value('BNUL_USERNAME') is not None or env_value('BNUL_PASSWORD') is not None:
+        result['environmentCredentialsPresent'] = True
+    if os.environ.get('BNUL_TOKEN'):
+        result['environmentTokenPresent'] = True
+    return result
 
 
 def browser_login(no_proxy=False, timeout=300, headless=False, credentials=None):
@@ -165,4 +209,4 @@ def browser_login(no_proxy=False, timeout=300, headless=False, credentials=None)
             finally:
                 context.close()
     except BrowserError:
-        raise Error('浏览器登录未完成。请检查浏览器安装、Linux 运行依赖/显示环境或资料目录占用。Chromium 安装：python -m playwright install chromium；可设置 BNUL_BROWSER=chrome/msedge') from None
+        raise Error('浏览器登录未完成。请检查浏览器安装、Linux 运行依赖/显示环境或资料目录占用。Chromium 安装：python -m playwright install chromium；也可用 bnul auth login --browser chrome 或 msedge') from None

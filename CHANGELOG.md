@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.5
+
+- `book --seat` accepts a seat label such as `008`, resolved from the seat list the command already fetches; unknown or ambiguous labels fail with SEAT_NOT_FOUND and nothing is submitted.
+- Booking validation no longer requests the unused seat timeline, saving one request per checked seat in `book` and `recommend`; `times` still shows it.
+- `auth webvpn` waits for a just-started attempt's QR instead of returning `starting`, so agents need not poll `--status`.
+- Rewrite the bundled skill around one command per task (no `--help` probe, no preview or `current` before authorized writes, rerun the original command after a WebVPN scan) and move WebVPN, login and watch details into on-demand references.
+- Consolidate login commands under `auth`: `setup`, `login`, `status`, `logout`, `webvpn`, `install-browser`. Removed the top-level `login` alias, `auth import` and `auth exchange-link` (their tokens lack the login-issued signing key), and `auth clear`/`auth forget`, replaced by `auth logout`, which deletes the session, saved credentials, login browser profiles and WebVPN cookies.
+- `auth setup`/`auth login --browser chromium|chrome|msedge` saves the browser for later automatic logins (`BNUL_BROWSER` still overrides).
+- `auth status` reports the masked account, name and role, session save time, transport, credential source, browser and booking limits (max minutes, breach count, totals); contact details and the signing key are never shown. An expired or missing session returns `authenticated: false` with the reason and the next step instead of failing.
+- `auth setup` falls back, only after an explicit confirmation, to a private 0600 `credentials.env` next to the session when the system keyring is unavailable. Automatic login reads it after environment variables; a later keyring setup or `auth logout` deletes it.
+- `--json`, `--text`, `--no-proxy` and `--transport` are also accepted after the subcommand.
+- `life` without an ID shows the current reservation's history; with no current reservation it fails with NO_CURRENT_RESERVATION.
+
 ## 0.5.4
 
 - `cancel`/`stop --execute` no longer require `--expect-id`; when omitted, the current reservation read in the same command is the target. A supplied ID is still verified.

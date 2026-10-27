@@ -9,7 +9,10 @@ LABELS = {'id': 'ID', 'message': '服务端提示', 'remark': '备注', 'code': 
           'createdDate': '时间', 'beginMinute': '开始', 'endMinute': '结束',
           'installed': '安装位置', 'authenticated': '已登录', 'configured': '已配置',
           'storage': '凭据存储', 'automaticLogin': '自动登录', 'saved': '已保存',
-          'path': '保存位置', 'cleared': '已清除会话', 'credentialsRemoved': '已删除凭据',
+          'path': '保存位置', 'credentials': '自动登录凭据', 'browser': '浏览器',
+          'loggedOut': '已退出登录', 'credentialsRemoved': '已删除系统凭据库中的账号密码',
+          'credentialError': '凭据删除失败', 'removed': '已删除文件',
+          'environmentCredentialsPresent': '环境变量中仍有账号密码，自动登录仍可用',
           'environmentTokenPresent': '环境中仍有指定 token'}
 
 
@@ -182,8 +185,44 @@ def life(args, data):
     return f'预约ID: {args.make_id}\n' + table(data, columns)
 
 
+def minutes(value):
+    if not isinstance(value, int) or isinstance(value, bool):
+        return scalar(value)
+    hours, rest = divmod(value, 60)
+    return f'{hours} 小时 {rest} 分钟' if hours and rest else f'{hours} 小时' if hours else f'{rest} 分钟'
+
+
+def auth_status(data):
+    account = data.get('account') or {}
+    session = data.get('session') or {}
+    who = '，'.join(scalar(account.get(k)) for k in ('fullName', 'flagName', 'collegeDepName') if present(account.get(k)))
+    lines = [fields([('登录状态', '已登录' if data.get('authenticated') else '未登录'),
+                     ('原因', data.get('reason'))]),
+             fields([('账号', account.get('username'))]) + (f'（{who}）' if who else ''),
+             fields([('会话', session.get('source') or session.get('path')), ('保存于', session.get('savedAt'))]),
+             fields([('连接方式', {'direct': '直连', 'webvpn': '学校 WebVPN'}.get(data.get('transport'), data.get('transport'))),
+                     ('自动登录凭据', data.get('credentials')), ('浏览器', data.get('browser'))])]
+    if account:
+        lines.append(fields([('单次最长预约', minutes(account.get('maxMinute'))), ('时间粒度', minutes(account.get('stepMinute'))),
+                             ('违约次数', account.get('breachNum')), ('禁约至', account.get('blackTime')),
+                             ('禁约说明', account.get('blackMessage'))]))
+        lines.append(fields([('累计预约', f"{account['totalMake']} 次" if present(account.get('totalMake')) else None),
+                             ('累计时长', minutes(account.get('totalTime')))]))
+    if not data.get('authenticated'):
+        if session.get('source'):
+            hint = '已指定 BNUL_TOKEN，不会自动登录；更换 token 或取消该环境变量'
+        elif data.get('credentials') in (None, '未配置') or str(data.get('credentials')).startswith('不可用'):
+            hint = '先运行 bnul auth setup，或设置环境变量 BNUL_USERNAME/BNUL_PASSWORD'
+        else:
+            hint = '直接运行业务命令即可，会在后台自动登录'
+        lines.append('下一步: ' + hint)
+    return '\n'.join(line for line in lines if line)
+
+
 def format_text(args, data):
     command = args.command
+    if command == 'auth' and getattr(args, 'action', None) == 'status' and isinstance(data, dict):
+        return auth_status(data)
     if command == 'buildings' and isinstance(data, dict):
         return buildings(data)
     if command in ('room-list', 'rooms') and isinstance(data, (dict, list)):

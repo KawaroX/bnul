@@ -29,9 +29,9 @@ pipx install git+https://github.com/KawaroX/bnul.git
 pipx ensurepath
 ```
 
-重开终端后运行同样的 `bnul` 命令。以上命令适用于 Windows PowerShell、macOS 和 Linux。无需填写 Python 或 CLI 绝对路径。若需要固定版本，将安装 URL 改为 `git+https://github.com/KawaroX/bnul.git@v0.5.4`。
+重开终端后运行同样的 `bnul` 命令。以上命令适用于 Windows PowerShell、macOS 和 Linux。无需填写 Python 或 CLI 绝对路径。若需要固定版本，将安装 URL 改为 `git+https://github.com/KawaroX/bnul.git@v0.5.5`。
 
-Linux 缺少浏览器系统库时执行 `bnul auth install-browser --with-deps`，系统依赖安装可能要求管理员权限。默认使用上述命令安装的 Chromium；也可通过 `BNUL_BROWSER=chrome` 或 `msedge` 使用已安装的 Chrome/Edge。
+Linux 缺少浏览器系统库时执行 `bnul auth install-browser --with-deps`，系统依赖安装可能要求管理员权限。默认使用上述命令安装的 Chromium；已安装 Chrome/Edge 时可用 `bnul auth setup --browser chrome`（或 `msedge`）改用它，选择会保存，之后的自动登录沿用。
 
 ## 预约临期监控（0.5.2）
 
@@ -61,20 +61,22 @@ skill 随安装包发布，不依赖源码目录；只调用 PATH 中的 `bnul`�
 
 | 命令 | 用途 |
 |---|---|
-| `bnul auth setup` | 一次配置学校账号密码到系统凭据库 |
-| `bnul auth login` | 可见浏览器登录，处理验证码、二次认证 |
-| `bnul login` | `auth login` 的兼容别名 |
-| `bnul auth status` | 只检查当前会话，不自动恢复 |
-| `bnul auth forget` | 删除已保存的账号密码 |
-| `bnul auth clear` | 删除 CLI 会话，保留密码与浏览器状态 |
-| `bnul auth import` | 备用：隐藏输入已有 token/curl |
-| `bnul auth exchange-link` | 高级诊断：兑换登录 URL 票据 |
+| `bnul auth setup` | 一次配置学校账号密码到系统凭据库；可加 `--browser chrome/msedge/chromium` |
+| `bnul auth login` | 可见浏览器登录，处理验证码、二次认证；可加 `--browser` |
+| `bnul auth status` | 检查当前会话（不自动恢复），显示账号、会话保存时间、连接方式、自动登录凭据来源、浏览器和预约额度 |
+| `bnul auth logout` | 删除本机会话、已保存的账号密码（凭据库和凭据文件）、登录浏览器资料和 WebVPN 会话 |
+| `bnul auth webvpn` | 学校 WebVPN 手机扫码，见下文 |
+| `bnul auth install-browser` | 安装自动登录使用的 Chromium |
+
+自动登录的账号密码按顺序读取，配置一种即可：环境变量 `BNUL_USERNAME` + `BNUL_PASSWORD`（或用 `BNUL_CREDENTIAL_ENV` 指向已有 dotenv 文件，只读这两个键），然后是 `auth setup` 保存的凭据。`auth setup` 优先存入系统凭据库；凭据库不可用（如无 Secret Service 的 VPS）时，经你确认后改存 `~/.config/bnul/credentials.env`，明文、仅当前用户可读（0600），之后重新存入凭据库时自动删除该文件。用环境变量时不需要运行任何登录命令，业务命令会在会话失效时自动登录。
+
+`--json`、`--no-proxy`、`--transport` 可放在子命令前后，例如 `bnul auth login --browser chrome --no-proxy`。
 
 普通业务命令自动处理明确的会话失效，后台恢复后重试查询一次。无需每分钟登录，也无需事先知道会话期限。样例 URL JWT 的 60 秒期限与 API 会话期限不同。学校要求验证码/二次认证或密码错误时才需要人工处理；每条命令最多恢复一次、提交密码一次，避免循环登录。setup 表示已保存，实际有效性以学校认证为准。
 
 macOS 使用 Keychain，Windows 使用 Credential Manager，Linux 使用 Secret Service（需要已启动且解锁的服务与会话 D-Bus）。无桌面服务器可通过秘密管理器注入 `BNUL_USERNAME` 和 `BNUL_PASSWORD`，无需系统凭据库；程序不将其写入文件。两者须同时设置，优先于系统库。后台模式不需要显示器，但遇到人工验证仍需要可见桌面。
 
-会话文件默认为 `~/.config/bnul/session.json`，用 `BNUL_CONFIG` 可改变位置。设置 `BNUL_TOKEN` 时优先使用该 token，禁用自动恢复以免覆盖指定身份。密码不写入 JSON 或日志。auth clear 不注销学校会话，下次业务命令可能再次自动登录。
+会话文件默认为 `~/.config/bnul/session.json`，用 `BNUL_CONFIG` 可改变位置。设置 `BNUL_TOKEN` 时优先使用该 token，禁用自动恢复以免覆盖指定身份。密码不写入 JSON 或日志。auth logout 只清除本机数据，不向学校注销；环境变量中的账号密码无法由 CLI 删除，结果会提示仍存在，此时下次业务命令仍会自动登录。
 
 从 0.4.1 起，支持学校将签名密钥改为通过登录响应的 `userInfoRes.hmacKey` 下发。CLI 会将密钥与对应 token 一起保存，仍按原有 AES 算法解密并为每次请求生成签名；不会跳过签名校验。旧会话缺少密钥时，普通查询自动重新登录一次。仅导入 token 或显式设置 `BNUL_TOKEN` 而没有配对密钥时会返回 `SESSION_SIGNING_KEY_MISSING`，请使用正常浏览器登录保存完整会话。
 
@@ -93,7 +95,7 @@ bnul --transport webvpn current
 
 默认 `direct` 保持原有行为。`--transport auto` / `BNUL_TRANSPORT=auto` 在业务请求前无凭据检测直连，不通时使用本机 WebVPN；不会在结果未知的写请求之后切换连接并重放。`bnul-vpn-login` 是扫码助手的兼容入口，输出原始状态 JSON。WebVPN 本身的微信登录不冒充为密码自动登录；有权限的 SSL VPN 连接及选座 CAS 会话使用账号密码自动恢复。
 
-可在 `~/.config/bnul/settings.json` 配置 `transport`、`browser_executable`、`webvpn_profile`、`qr_directory`；对应环境变量分别是 `BNUL_TRANSPORT`、`BNUL_BROWSER_EXECUTABLE`、`BNUL_WEBVPN_PROFILE`、`BNUL_QR_DIR`，环境变量优先。`BNUL_SETTINGS` 可指定设置文件。已有独立 Chrome 可以直接复用可执行文件，不读取个人浏览器资料。
+可在 `~/.config/bnul/settings.json` 配置 `transport`、`browser`、`browser_executable`、`webvpn_profile`、`qr_directory`；对应环境变量分别是 `BNUL_TRANSPORT`、`BNUL_BROWSER`、`BNUL_BROWSER_EXECUTABLE`、`BNUL_WEBVPN_PROFILE`、`BNUL_QR_DIR`，环境变量优先。`browser` 由 `auth setup/login --browser` 写入，设置后优先于 `browser_executable`。`BNUL_SETTINGS` 可指定设置文件。已有独立 Chrome 可以直接复用可执行文件，不读取个人浏览器资料。
 
 ## 楼馆、楼层与房间别名
 
@@ -133,7 +135,7 @@ bnul --transport webvpn current
 | `r8` | 7F 阅览区 |
 | `r9` | 8F 借阅区 |
 
-其他楼馆的房间同样有固定别名：主馆南区 `r1` 为工具报刊外文阅览区；教育学分馆 `r1`、`r2` 分别为 108、149；沙河 `r1`、`r2` 分别为 G 区分馆一层、二层。完整分馆表见 [skill](skills/bnu-library/SKILL.md#房间别名)。房间别名由代码固定，不随清单排序、安装时间或本机配置变化；新位置不会自动分配别名。
+其他楼馆的房间同样有固定别名：主馆南区 `r1` 为工具报刊外文阅览区；教育学分馆 `r1`、`r2` 分别为 108、149；沙河 `r1`、`r2` 分别为 G 区分馆一层、二层。完整分馆表见 [skill](skills/bnu-library/SKILL.md#时间与位置)。房间别名由代码固定，不随清单排序、安装时间或本机配置变化；新位置不会自动分配别名。
 
 ```sh
 bnul seats --room r4 --date tomorrow --start 19:00 --end 21:00
@@ -179,7 +181,7 @@ bnul recommend --date today --start now --end 22:00 --room-order 'r4,r3,r2'
 所有命令提供两种输出，按阅读或程序处理需要自由选择：
 
 - 默认：纯文本，无需添加参数。按命令用途展示主要信息，隐藏空值和内部元数据，保留本次查询返回的全部记录和完整消息。`--text` 只是显式选择同一默认格式。
-- 前置 `--json`：完整命令结果，保留所有字段。成功为 `{"ok": true, "data": ...}`，失败保留错误信息、错误码及详情。可直接阅读，也可用 Python、jq 等解析；大结果可重定向到文件。
+- `--json`：完整命令结果，保留所有字段。成功为 `{"ok": true, "data": ...}`，失败保留错误信息、错误码及详情。可直接阅读，也可用 Python、jq 等解析；大结果可重定向到文件。
 
 | 命令 | 文本主要信息 |
 | --- | --- |
@@ -209,7 +211,7 @@ bnul seats --date tomorrow --start 19:00 --end 21:00 --label 008
 bnul times --seat 1888111985066872919 --date tomorrow --start 19:00
 bnul current
 bnul recent
-bnul life 预约ID
+bnul life             # 当前预约的变更记录；其他预约写 bnul life 预约ID
 ```
 
 默认楼馆为主馆；`seats` / `book` 默认房间为 `r4`，`rooms` / `recommend` 默认跨房间查询。楼层筛选仅用于 `rooms` / `recommend`，完整选择规则见前文“楼馆、楼层与房间别名”。日期支持 today/tomorrow/YYYY-MM-DD，使用上海时区。固定时间为 HH:MM，通常只能选择整点或半点，必须出现在服务器可选列表中，不支持跨天。“现在”使用 `--start now`（也支持 `--start 现在` 或 `--start=-1`），仅限今天。查询结束时间时使用当前上海时间的分钟数，提交预约时严格发送 -1。记录中出现 14:04 代表实际落定的开始时间，不证明可以直接提交任意分钟。以实时可选时段为准；当前 IN_USE 不代表未来不可约，afterFree 也不保证整个目标时段可约。
@@ -221,6 +223,8 @@ bnul book --seat 1888111985066872919 --date today --start now --end 19:30
 bnul book --seat 1888111985066872919 --date tomorrow --start 19:00 --end 20:30
 # 实际提交
 bnul book --seat 1888111985066872919 --date tomorrow --start 19:00 --end 20:30 --execute
+# --seat 也可直接写座位编号（保留前导零），由本命令已获取的座位列表解析为 ID
+bnul book --room r4 --seat 008 --date tomorrow --start 19:00 --end 20:30 -e
 # 结束使用：先预览，再按实际预约 ID 提交
 bnul history --page 1 --page-size 10
 bnul breach --page 1 --page-size 10
@@ -255,7 +259,7 @@ bnul skill install
 uv tool uninstall bnul
 ```
 
-pipx 用户使用 `pipx upgrade bnul` / `pipx uninstall bnul`。浏览器库升级后可能需重新安装 Chromium。卸载 CLI 不删除凭据、浏览器资料或 skill；如需清除密码，先运行 `bnul auth forget`。
+pipx 用户使用 `pipx upgrade bnul` / `pipx uninstall bnul`。浏览器库升级后可能需重新安装 Chromium。卸载 CLI 不删除凭据、浏览器资料或 skill；如需清除密码和会话，先运行 `bnul auth logout`。
 
 ## 开发与验证
 

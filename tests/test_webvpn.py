@@ -89,6 +89,14 @@ class WebVPNTests(unittest.TestCase):
         self.assertNotEqual(result['attempt'], 'old')
         self.assertFalse(current_attempt('old'))
 
+    def test_recent_starting_attempt_is_awaited_not_returned(self):
+        write_status('old', status='starting')
+        with patch('bnul.webvpn.subprocess.Popen') as spawn, \
+                patch('bnul.webvpn.time.sleep', side_effect=lambda _: write_status('old', status='scan_required', qr_path='/q.png')):
+            result = start_login()
+        spawn.assert_not_called()
+        self.assertEqual((result['attempt'], result['status']), ('old', 'scan_required'))
+
 
 if __name__ == '__main__':
     unittest.main()

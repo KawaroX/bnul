@@ -124,12 +124,22 @@ def worker(attempt):
         write_status(attempt, status='qr_expired')
 
 
+def wait_started():
+    for _ in range(40):
+        value = read_status()
+        if value.get('status') != 'starting':
+            return value
+        time.sleep(.5)
+    return read_status()
+
+
 def start_login(refresh=False):
     previous = read_status()
     if not refresh and previous.get('status') in ('starting', 'scan_required'):
         age = time.time() - previous.get('updated_at', 0)
         if age < (30 if previous['status'] == 'starting' else 180):
-            return previous
+            # Wait for a just-started attempt here so callers never have to poll --status for its QR.
+            return wait_started() if previous['status'] == 'starting' else previous
     directory = webvpn_profile()
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     attempt = uuid.uuid4().hex
@@ -138,12 +148,7 @@ def start_login(refresh=False):
     with os.fdopen(fd, 'a', encoding='utf-8') as log:
         subprocess.Popen([sys.executable, '-m', 'bnul.webvpn', '--worker', attempt],
                          stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
-    for _ in range(40):
-        value = read_status()
-        if value.get('status') != 'starting':
-            return value
-        time.sleep(.5)
-    return read_status()
+    return wait_started()
 
 
 def main(argv=None):

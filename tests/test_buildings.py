@@ -202,6 +202,32 @@ class BuildingCliTests(unittest.TestCase):
                     client.validate_booking.assert_called_once_with(SEAT, DATE, 1140, 1200)
                     self.assertFalse(result['submitted'])
 
+    def test_book_seat_label_resolves_without_extra_request(self):
+        for execute in (False, True):
+            client = self.client()
+            argv = ['book', '--seat', '008'] + self.time_args() + (['-e'] if execute else [])
+            result = self.invoke(argv, client)
+            client.seats.assert_called_once_with(ROOM, DATE, 1140, 1200)
+            client.api.assert_not_called()
+            client.rooms.assert_not_called()
+            if execute:
+                self.assertEqual(client.book.call_args.args[:4], (SEAT, DATE, 1140, 1200))
+            else:
+                client.validate_booking.assert_called_once_with(SEAT, DATE, 1140, 1200)
+                self.assertEqual(result['seatLabel'], '008')
+
+    def test_book_unknown_or_ambiguous_label_never_submits(self):
+        other = '9876543210987654322'
+        for seats in ({SEAT: {'id': SEAT, 'label': '007'}},
+                      {SEAT: {'id': SEAT, 'label': '008'}, other: {'id': other, 'label': '008'}}):
+            client = self.client()
+            client.seats.return_value = seats
+            with self.assertRaises(Error) as caught:
+                self.invoke(['book', '--seat', '008', '--execute'] + self.time_args(), client)
+            self.assertEqual(caught.exception.code, 'SEAT_NOT_FOUND')
+            client.validate_booking.assert_not_called()
+            client.book.assert_not_called()
+
     def test_recommend_forwards_resolved_building_and_room_order(self):
         client = self.client()
         with patch('bnul.recommend.recommend', return_value={'recommendations': []}) as recommend, \

@@ -29,7 +29,8 @@ def install_skill(destination=None):
     if target.resolve() == source.resolve():
         return {'installed': str(target)}
     target.mkdir(parents=True, exist_ok=True)
-    for relative in ('SKILL.md', 'references/installation.md'):
+    for relative in ('SKILL.md', 'references/installation.md', 'references/webvpn.md',
+                     'references/auth.md', 'references/watch.md'):
         dest = target / relative
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source / relative, dest)

@@ -1,39 +1,47 @@
 import argparse
 import getpass
-import html
 import json
 import os
-import re
 import sys
 from importlib.metadata import version
-from urllib.parse import parse_qs, urlparse, quote
-from .client import Client, Error, BUILDING, ROOM, minute, start_minute, query_start, day, identifier, save_token, config_path
+from .client import Client, Error, BUILDING, ROOM, minute, start_minute, query_start, day, identifier, config_path
+
+BROWSERS = ('chromium', 'chrome', 'msedge')
+
+
+def global_options(parser, default=False):
+    output = parser.add_mutually_exclusive_group()
+    output.add_argument('--json', action='store_true', default=default, help='完整命令结果的 JSON 输出（包括错误，不做展示性删减）')
+    output.add_argument('--text', action='store_true', default=default, help='按命令展示主要信息的纯文本（默认，无需指定）')
+    parser.add_argument('--no-proxy', action='store_true', default=default, help='忽略环境代理')
+    parser.add_argument('--transport', choices=['direct', 'webvpn', 'auto'],
+                        default=None if default is False else default, help='直连、学校 WebVPN 或请求前自动选择')
+
+
+class CommandParser(argparse.ArgumentParser):
+    """Subcommands also accept the global options; SUPPRESS keeps a value given before the subcommand."""
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        global_options(self, argparse.SUPPRESS)
 
 
 def parser():
     p = argparse.ArgumentParser(prog='bnul', description='北师大图书馆座位预约；日期按上海时区，写操作默认预览')
     p.add_argument('-v', '--version', action='version', version='bnul ' + version('bnul'), help='显示已安装版本并退出')
-    output = p.add_mutually_exclusive_group()
-    output.add_argument('--json', action='store_true', help='完整命令结果的 JSON 输出（包括错误，不做展示性删减）')
-    output.add_argument('--text', action='store_true', help='按命令展示主要信息的纯文本（默认，无需指定）')
-    p.add_argument('--no-proxy', action='store_true', help='忽略环境代理')
-    p.add_argument('--transport', choices=['direct', 'webvpn', 'auto'], help='直连、学校 WebVPN 或请求前自动选择')
-    sub = p.add_subparsers(dest='command', required=True)
-    a = sub.add_parser('login', help='auth login 的兼容别名：浏览器登录')
-    a.add_argument('--timeout', type=int, default=300, help='等待登录的秒数，默认 300')
-    a = sub.add_parser('auth', help='登录、检查会话、导入或清除本地凭据')
+    global_options(p)
+    sub = p.add_subparsers(dest='command', required=True, parser_class=CommandParser)
+    a = sub.add_parser('auth', help='登录、检查会话、退出登录',
+                       description='自动登录凭据依次读取：环境变量 BNUL_USERNAME + BNUL_PASSWORD（或 BNUL_CREDENTIAL_ENV 指向的 dotenv 文件），'
+                                   '再到 auth setup 保存的凭据（系统凭据库；不可用时经确认存入仅本用户可读的 credentials.env）。'
+                                   '配置后无需登录命令，业务命令会在会话失效时后台自动登录。')
     auth = a.add_subparsers(dest='action', required=True)
-    a = auth.add_parser('login', help='打开可见浏览器，处理人工登录或验证码')
+    a = auth.add_parser('setup', help='一次配置学校账号密码（优先系统凭据库），失效后自动登录')
+    a.add_argument('--browser', choices=BROWSERS, help='自动登录使用的浏览器，保存为默认值；默认 chromium')
+    a = auth.add_parser('login', help='打开可见浏览器，处理人工登录、验证码或二次认证')
+    a.add_argument('--browser', choices=BROWSERS, help='使用的浏览器，同时保存为之后自动登录的默认值')
     a.add_argument('--timeout', type=int, default=300, help='等待登录的秒数，默认 300')
-    a.add_argument('--file', help=argparse.SUPPRESS)
-    for action, description in [('import', '备用：导入请求头 token 或 curl'),
-                                ('exchange-link', '高级诊断：兑换 URL 票据，不是常规登录')]:
-        a = auth.add_parser(action, help=description)
-        a.add_argument('--file', help='从文件读取；- 表示标准输入，否则隐藏输入')
-    auth.add_parser('setup', help='一次配置学校账号密码到 系统凭据存储，失效后自动登录')
-    auth.add_parser('forget', help='删除系统凭据存储账号密码，保留现有会话')
-    auth.add_parser('status', help='向服务器验证当前保存的会话')
-    auth.add_parser('clear', help='仅清除本地 token，保留系统凭据存储/浏览器资料，后续可自动恢复')
+    auth.add_parser('status', help='检查会话（不自动恢复），显示账号、凭据来源、浏览器和预约额度')
+    auth.add_parser('logout', help='删除本机的会话、已保存的账号密码、登录浏览器资料和 WebVPN 会话')
     a = auth.add_parser('webvpn', help='学校 WebVPN 手机二维码认证；会话保存在当前电脑或 VPS')
     group = a.add_mutually_exclusive_group()
     group.add_argument('--status', action='store_true', help='读取后台扫码认证状态')
@@ -61,8 +69,8 @@ def parser():
     sub.add_parser('buildings', help='楼馆、楼层和开放预约日期')
     for name in ('current', 'recent'):
         sub.add_parser(name, help='当前预约' if name == 'current' else '最近预约详情')
-    a = sub.add_parser('life', help='预约变更记录')
-    a.add_argument('make_id', type=identifier)
+    a = sub.add_parser('life', help='预约变更记录；省略预约 ID 时查看当前预约')
+    a.add_argument('make_id', type=identifier, nargs='?', help='预约 ID；默认当前预约（待签到、使用中或暂离）')
     for name, description in [('stop', '结束已签到的当前使用'), ('cancel', '取消未签到的当前预约')]:
         a = sub.add_parser(name, help=description + '；状态不符时自动改用另一操作；默认仅预览')
         a.add_argument('-e', '--exe', '--execute', dest='execute', action='store_true', help='实际提交；默认仅预览')
@@ -98,8 +106,10 @@ def parser():
             a.add_argument('--building', default=BUILDING, help='楼馆固定别名或 ID')
         if name == 'seats':
             a.add_argument('--label', help='保留前导零，例如 008')
-        if name in ('times', 'book'):
+        if name == 'times':
             a.add_argument('--seat', type=identifier, required=True)
+        if name == 'book':
+            a.add_argument('--seat', required=True, help='座位编号（保留前导零，如 008）或座位 ID')
         a.add_argument('--start', type=start_minute, help='HH:MM 或 now/现在/-1（现在）', required=name in ('seats', 'book'))
         if name != 'times':
             a.add_argument('--end', type=minute, required=name != 'rooms')
@@ -108,38 +118,15 @@ def parser():
     return p
 
 
-def read_secret(args):
-    if args.file:
-        if args.file == '-':
-            return sys.stdin.read().strip()
-        from pathlib import Path
-        return Path(args.file).read_text(encoding="utf-8").strip()
-    prompt = '粘贴新鲜官网登录链接（输入隐藏；自动获取请用 bnul auth login）: ' if args.action == 'exchange-link' else '粘贴请求头 token 或 curl（输入隐藏）: '
-    return getpass.getpass(prompt).strip()
-
-
-def imported_token(text):
-    text = html.unescape(text)
-    match = re.search(r"(?:-H|--header)\s+['\"]token:\s*([^'\"\r\n]+)", text, re.I)
-    if match:
-        return match.group(1).strip()
-    if not text or re.search(r'\s', text) or '://' in text:
-        raise Error('未找到请求头 token；常规登录请使用 auth login；URL 诊断用 auth exchange-link')
-    return text
-
-
-def login_link_token(text):
-    text = html.unescape(text.strip())
-    match = re.fullmatch(r'\[[^\]]*\]\((https://[^\s]+)\)', text)
-    if match:
-        text = match.group(1)
-    url = urlparse(text)
-    if url.scheme != 'https' or url.netloc != 'libseat.bnu.edu.cn':
-        raise Error('需要 libseat.bnu.edu.cn 的 HTTPS 登录链接')
-    tokens = parse_qs(url.query).get('token', [])
-    if len(tokens) != 1 or not re.fullmatch(r'[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+', tokens[0]):
-        raise Error('登录链接需包含唯一、完整的 JWT token；不要粘贴转义后的文本')
-    return tokens[0]
+def account_summary(info):
+    # Identity and booking limits only; contact details and the signing key never leave the client.
+    if not isinstance(info, dict):
+        return {}
+    username = str(info.get('username') or '')
+    keys = ('fullName', 'flagName', 'collegeDepName', 'maxMinute', 'stepMinute', 'breachNum',
+            'blackTime', 'blackMessage', 'totalMake', 'totalTime')
+    return {'username': username[:3] + '****' + username[-5:] if len(username) > 8 else username,
+            **{key: info[key] for key in keys if key in info}}
 
 
 def run(args):
@@ -155,9 +142,10 @@ def run(args):
     if args.command == 'auth' and args.action == 'install-browser':
         from .install import install_browser
         return install_browser(args.with_deps)
-    if args.command == 'login' or (args.command == 'auth' and args.action == 'login'):
-        if getattr(args, 'file', None):
-            raise Error('auth login 现为浏览器登录；旧 --file URL 兑换请显式使用 auth exchange-link --file，不会自动改变操作')
+    if args.command == 'auth' and getattr(args, 'browser', None):
+        from .network import save_setting
+        save_setting('browser', args.browser)
+    if args.command == 'auth' and args.action == 'login':
         if args.timeout <= 0:
             raise Error('timeout 必须大于 0')
         from .browser_auth import browser_login
@@ -170,36 +158,51 @@ def run(args):
                 raise Error('学校 WebVPN 登录助手失败', 'WEBVPN_LOGIN_FAILED', result)
             return result
         if args.action == 'setup':
-            from .credentials import store_credentials
+            from .browser_auth import browser_name
+            from .credentials import credential_file, store_credentials, store_credentials_file
             username = input('学校账号: ').strip()
-            password = getpass.getpass('学校密码（仅保存到 系统凭据存储，输入隐藏）: ')
-            store_credentials(username, password)
-            return {'configured': True, 'storage': 'system keyring', 'automaticLogin': True}
-        if args.action == 'forget':
-            from .credentials import forget_credentials
-            forget_credentials()
-            return {'credentialsRemoved': True}
-        if args.action == 'clear':
-            config_path().unlink(missing_ok=True)
-            return {'cleared': True, 'environmentTokenPresent': bool(os.environ.get('BNUL_TOKEN'))}
-        if args.action == 'import':
-            token = imported_token(read_secret(args))
-            client = Client(token, args.no_proxy)
-            client.bootstrap()
-            client.api('user/getUserInfo')
-            save_token(token)
-            return {'saved': True, 'path': str(config_path())}
-        if args.action == 'exchange-link':
-            token = login_link_token(read_secret(args))
-            client = Client(no_proxy=args.no_proxy)
-            client.bootstrap()
+            password = getpass.getpass('学校密码（输入隐藏）: ')
             try:
-                data = client.request('/static/public/auth/cas/' + quote(token, safe=''),
-                                      {'token': token, 'loginType': 'PC'}, public=True)
+                store_credentials(username, password)
+                storage = '系统凭据库'
             except Error as exc:
-                raise Error('登录链接兑换失败；服务端返回：' + str(exc).replace(token, '[REDACTED]') + '。具体原因尚未确认；常规登录请用 bnul auth login', exc.code) from None
-            save_token(data['token'])
-            return {'saved': True, 'path': str(config_path())}
+                if exc.code != 'CREDENTIALS_UNAVAILABLE':
+                    raise
+                # Plaintext on disk is weaker than a keyring, so it needs an explicit yes every time.
+                print(f'{exc}。\n可改为保存到 {credential_file()}：明文，仅当前系统用户可读。', file=sys.stderr)
+                try:
+                    answer = input('确认保存到该文件？[y/N] ').strip().lower()
+                except EOFError:
+                    answer = ''
+                if answer not in ('y', 'yes'):
+                    raise Error('未保存账号密码；也可用环境变量 BNUL_USERNAME/BNUL_PASSWORD 提供', 'CREDENTIALS_UNAVAILABLE') from None
+                storage = f'凭据文件 {store_credentials_file(username, password)}'
+            return {'configured': True, 'storage': storage, 'automaticLogin': True, 'browser': browser_name()}
+        if args.action == 'logout':
+            from .browser_auth import logout
+            return logout()
+        if args.action == 'status':
+            from .browser_auth import browser_name
+            from .credentials import credential_source
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            result = {'credentials': credential_source() or '未配置', 'browser': browser_name()}
+            if os.environ.get('BNUL_TOKEN'):
+                result['session'] = {'source': '环境变量 BNUL_TOKEN'}
+            elif config_path().is_file():
+                saved = datetime.fromtimestamp(config_path().stat().st_mtime, ZoneInfo('Asia/Shanghai'))
+                result['session'] = {'path': str(config_path()), 'savedAt': saved.strftime('%Y-%m-%d %H:%M:%S')}
+            c = Client(no_proxy=args.no_proxy)
+            c.auto_auth = False
+            result['transport'] = c.network.mode
+            try:
+                c.bootstrap()
+                info = c.api('user/getUserInfo')
+            except Error as exc:
+                if str(exc.code) not in ('20003', '401', 'LOCAL_AUTH_MISSING', 'SESSION_SIGNING_KEY_MISSING'):
+                    raise
+                return {'authenticated': False, 'reason': str(exc), 'reasonCode': exc.code, **result}
+            return {'authenticated': True, 'account': account_summary(info), **result}
     if args.command == 'rooms' and (args.start is None) != (args.end is None):
         raise Error('rooms 的 --start 和 --end 必须一起提供；不提供时显示房间清单')
     if hasattr(args, 'end') and args.end is not None and query_start(args.start, args.date) >= args.end:
@@ -207,21 +210,22 @@ def run(args):
     if args.command in ('history', 'breach') and (args.page < 1 or not 1 <= args.page_size <= 100):
         raise Error('page 必须大于 0；page-size 必须在 1–100 之间')
     c = Client(no_proxy=args.no_proxy)
-    if args.command == 'auth':
-        c.auto_auth = False
     c.bootstrap()
-    if args.command == 'auth':
-        c.api('user/getUserInfo')
-        return {'authenticated': True}
     if args.command in ('history', 'breach'):
         return c.api(f'user/{args.command}/{args.page}/{args.page_size}')
     if args.command == 'buildings':
         from .buildings import building_catalog
         return building_catalog(c)
-    if args.command in ('current', 'recent', 'life'):
-        path = {'current': 'user/currentUseMake', 'recent': 'user/lastMake',
-                'life': 'user/makeLife/' + getattr(args, 'make_id', '')}[args.command]
-        return c.api(path)
+    if args.command in ('current', 'recent'):
+        return c.api('user/currentUseMake' if args.command == 'current' else 'user/lastMake')
+    if args.command == 'life':
+        if args.make_id is None:
+            # The current reservation is the only one the user can mean without naming an ID.
+            current = c.api('user/currentUseMake')
+            if not isinstance(current, dict) or not current.get('id'):
+                raise Error('没有当前预约；查看其他预约的变更记录请提供预约 ID', 'NO_CURRENT_RESERVATION')
+            args.make_id = identifier(str(current['id']))
+        return c.api('user/makeLife/' + args.make_id)
     if hasattr(args, 'building'):
         from .buildings import location_selector
         args.building, floor = location_selector(c, args.building, getattr(args, 'floor', None))
@@ -261,8 +265,12 @@ def run(args):
         return c.times(args.seat, args.date, args.start)
     if args.command == 'book':
         seats = c.seats(args.room, args.date, args.start, args.end)
-        if args.seat not in seats:
-            raise Error('指定座位不在该房间返回的座位列表中')
+        # A label such as 008 resolves from the seat list this command already fetched.
+        matches = [args.seat] if args.seat in seats else [k for k, s in seats.items() if s.get('label') == args.seat]
+        if len(matches) != 1:
+            raise Error('指定座位不在该房间返回的座位列表中' if not matches else '该编号对应多个座位，请改用座位 ID',
+                        'SEAT_NOT_FOUND')
+        args.seat = identifier(matches[0])
         if args.execute:
             return c.book(args.seat, args.date, args.start, args.end, os.environ.get('BNUL_CAP_TOKEN'))
         plan = c.validate_booking(args.seat, args.date, args.start, args.end)

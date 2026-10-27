@@ -12,15 +12,16 @@ VPN = 'https://webvpn.bnu.edu.cn'
 LIBRARY = 'libseat.bnu.edu.cn'
 
 
-def settings():
+def settings_path():
     configured = os.environ.get('BNUL_SETTINGS')
-    if configured:
-        path = Path(configured).expanduser()
-    else:
-        try:
-            path = Path.home() / '.config/bnul/settings.json'
-        except RuntimeError:
-            return {}  # optional settings; Windows processes may deliberately clear HOME
+    return Path(configured).expanduser() if configured else Path.home() / '.config/bnul/settings.json'
+
+
+def settings():
+    try:
+        path = settings_path()
+    except RuntimeError:
+        return {}  # optional settings; Windows processes may deliberately clear HOME
     try:
         value = json.loads(path.read_text(encoding='utf-8'))
     except FileNotFoundError:
@@ -30,6 +31,21 @@ def settings():
     if not isinstance(value, dict):
         raise Error('bnul settings.json 必须是 JSON 对象', 'CONFIG_INVALID')
     return value
+
+
+def save_setting(key, value):
+    # Merge into the existing file so hand-written settings are kept.
+    path = settings_path()
+    current = {**settings(), key: value}
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd, tmp = tempfile.mkstemp(prefix='.settings-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+            json.dump(current, stream, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
 
 
 def webvpn_profile():
