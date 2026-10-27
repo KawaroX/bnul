@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.4
 
 - `cancel`/`stop --execute` no longer require `--expect-id`; when omitted, the current reservation read in the same command is the target. A supplied ID is still verified.
 - `cancel`/`stop` follow the live status: RESERVE is cancelled and CHECK_IN/AWAY is stopped, whichever command was typed. A switch is reported in preview, text and JSON (`switched`, `requestedAction`, `action`, raw `result`); other states still fail with INVALID_RESERVATION_STATE.
