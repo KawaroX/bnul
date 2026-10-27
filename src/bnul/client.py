@@ -85,7 +85,9 @@ def signed_headers(key, request_id=None, timestamp=None):
     return {'X-request-id': rid, 'X-request-date': stamp, 'X-hmac-request-key': signature}
 
 def config_path():
-    return Path(os.environ.get('BNUL_CONFIG', str(Path.home() / '.config/bnul/session.json')))
+    # Only resolve the home directory when no explicit path is configured.
+    configured = os.environ.get('BNUL_CONFIG')
+    return Path(configured) if configured else Path.home() / '.config/bnul/session.json'
 
 def save_token(token, session_hmac_key=None):
     if not isinstance(token, str) or not token.strip() or '\n' in token or '\r' in token:
