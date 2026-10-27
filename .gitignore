@@ -7,3 +7,4 @@ build/
 *session*.json
 *.py[cod]
 installed-skill/
+.DS_Store
