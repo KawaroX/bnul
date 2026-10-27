@@ -15,12 +15,11 @@
 
 ## 配置与验证
 
-安装 [v0.5.2 Release](https://github.com/KawaroX/bnul/releases/tag/v0.5.2) 的 wheel 或固定 tag。不要把新监控装到另一份旧代码目录中。
+安装 [v0.6.0 Release](https://github.com/KawaroX/bnul/releases/tag/v0.6.0) 的 wheel 或固定 tag。不要把新监控装到另一份旧代码目录中。自动登录不需要浏览器，旧版本安装的 Chromium 可以不再维护。
 
 ```sh
-uv tool install --force git+https://github.com/KawaroX/bnul.git@v0.5.2
+uv tool install --force git+https://github.com/KawaroX/bnul.git@v0.6.0
 bnul --version
-bnul auth install-browser --with-deps
 ```
 
 可复用已有私有 dotenv：将 `BNUL_CREDENTIAL_ENV` 指向绝对路径，只读取 `BNUL_USERNAME`、`BNUL_PASSWORD` 和通知所需键，不复制文件。环境中的同名键优先；文件内容不做 `${...}` 展开。`BNUL_WATCH_ENV` 可为监控单独指定文件。文件应只允许运行用户读取。已有浏览器可通过 settings.json 的 `browser_executable` 指定；transport 设置沿用正式 CLI。
@@ -36,7 +35,7 @@ bnul watch --execute --interval 120 --notify slack
 
 告警区分截止时间/规则无法确认、登录恢复失败、查询失败、错过处理窗口与心跳异常；只在登录相关故障中说明登录重试。期限解析失败不等于鉴权失败。首次故障立即通知，同类连续故障最多每小时提醒一次；恢复及自动操作结果单独通知。通知失败保留磁盘队列并以 120 秒至 1 小时退避重试，尊重 Slack 限流；服务重启后继续投递。网络超时而 Slack 实际已收件时可能重复一条，通知按至少一次交付设计。通知不包含学校密码或 token。
 
-普通会话失效自动复用本机浏览器/现有凭据恢复，包含 0.4.1 的登录签名密钥修复。白天恢复失败后仍每 120 秒读状态，登录尝试从 30 分钟退避到最多 6 小时，状态跨重启保留；外部修复的会话会在下一轮读检查中被识别。学校要求验证码或 WebVPN 手机确认时，通知后需正常完成认证。修正凭据后可先 `bnul current` 完成恢复，监控下一轮会自动恢复工作。
+普通会话失效时用现有凭据经 HTTP 自动登录（直连或 WebVPN 均可）。同一账号只有一个有效会话，其他设备登录会顶掉监控的会话，监控会自动重新登录。白天恢复失败后仍每 120 秒读状态，登录尝试从 30 分钟退避到最多 6 小时，状态跨重启保留；外部修复的会话会在下一轮读检查中被识别。学校要求验证码或 WebVPN 手机确认时，通知后需正常完成认证。修正凭据后可先 `bnul current` 完成恢复，监控下一轮会自动恢复工作。
 
 ## systemd
 

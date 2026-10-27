@@ -1,6 +1,6 @@
 # 学校 WebVPN 与常在线服务器
 
-`bnul` 可以在 VPS 本机运行。默认直连；配置 `BNUL_TRANSPORT=auto`，或在 `~/.config/bnul/settings.json` 中设置 `transport: auto` 后，CLI 会在业务请求前自动选择直连或学校 WebVPN。API token 失效时，CLI 仍会自动通过学校 CAS 登录。`BNUL_BROWSER_EXECUTABLE`（或 settings 的 `browser_executable`）可以指定已有的 Chrome。
+`bnul` 可以在 VPS 本机运行。默认直连；配置 `BNUL_TRANSPORT=auto`，或在 `~/.config/bnul/settings.json` 中设置 `transport: auto` 后，CLI 会在业务请求前自动选择直连或学校 WebVPN。API token 失效时，CLI 仍会经 WebVPN 用 HTTP 自动登录学校 CAS，不需要浏览器；只有 WebVPN 自身失效时才需要扫码。`BNUL_BROWSER_EXECUTABLE`（或 settings 的 `browser_executable`）可以指定已有的 Chrome。
 
 学校传统 SSL VPN 与 WebVPN 微信扫码是两个不同的入口，不要混称为"密码自动登录"。已开通 SSL VPN 的 Linux 用户，按仓库 `deploy/linux/README.md` 部署 `bnul vpn run` 和 systemd 自动重连；普通安装和业务命令不会改动路由。
 

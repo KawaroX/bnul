@@ -198,11 +198,11 @@ class Client:
         return self.system
 
     def recover_auth(self):
-        from .browser_auth import browser_login
+        from .http_auth import http_login
         import sys
         self.auth_recovered = True  # at most one recovery per client/command
-        print('登录会话失效或缺少签名密钥，正在后台自动恢复…', file=sys.stderr)
-        browser_login(no_proxy=self.no_proxy, timeout=60, headless=True)
+        print('登录会话失效或缺少签名密钥，正在后台自动登录…', file=sys.stderr)
+        http_login(network=self.network)
         self.token = load_token()
         self.bootstrap()
 

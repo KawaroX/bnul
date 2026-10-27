@@ -8,6 +8,10 @@ from .client import Error
 
 
 def install_browser(with_deps=False):
+    import importlib.util
+    if importlib.util.find_spec('playwright') is None:
+        from .browser_auth import BROWSER_MISSING
+        raise Error(BROWSER_MISSING.split('，再运行')[0], 'BROWSER_SUPPORT_MISSING')
     command = [sys.executable, '-m', 'playwright', 'install']
     if with_deps:
         command.append('--with-deps')

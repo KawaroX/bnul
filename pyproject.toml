@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bnul"
-version = "0.5.5"
+version = "0.6.0"
 description = "北京师范大学图书馆座位预约 CLI"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.9"
-dependencies = ["cryptography>=39", "playwright>=1.40", "keyring>=25", "python-dotenv>=1", "tzdata; sys_platform == 'win32'"]
+dependencies = ["cryptography>=39", "keyring>=25", "python-dotenv>=1", "tzdata; sys_platform == 'win32'"]
 
 [project.optional-dependencies]
-browser = ["playwright>=1.40", "keyring>=25"]
+browser = ["playwright>=1.40"]
 
 [project.scripts]
 bnul = "bnul.cli:main"

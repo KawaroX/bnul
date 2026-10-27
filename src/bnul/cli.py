@@ -33,20 +33,19 @@ def parser():
     a = sub.add_parser('auth', help='登录、检查会话、退出登录',
                        description='自动登录凭据依次读取：环境变量 BNUL_USERNAME + BNUL_PASSWORD（或 BNUL_CREDENTIAL_ENV 指向的 dotenv 文件），'
                                    '再到 auth setup 保存的凭据（系统凭据库；不可用时经确认存入仅本用户可读的 credentials.env）。'
-                                   '配置后无需登录命令，业务命令会在会话失效时后台自动登录。')
+                                   '配置后无需登录命令，业务命令会在会话失效时后台自动登录，无需浏览器。')
     auth = a.add_subparsers(dest='action', required=True)
-    a = auth.add_parser('setup', help='一次配置学校账号密码（优先系统凭据库），失效后自动登录')
-    a.add_argument('--browser', choices=BROWSERS, help='自动登录使用的浏览器，保存为默认值；默认 chromium')
-    a = auth.add_parser('login', help='打开可见浏览器，处理人工登录、验证码或二次认证')
-    a.add_argument('--browser', choices=BROWSERS, help='使用的浏览器，同时保存为之后自动登录的默认值')
+    auth.add_parser('setup', help='一次配置学校账号密码（优先系统凭据库），失效后自动登录')
+    a = auth.add_parser('login', help='打开可见浏览器，处理人工登录、验证码或二次认证（需浏览器支持）')
+    a.add_argument('--browser', choices=BROWSERS, help='使用的浏览器，同时保存为默认值')
     a.add_argument('--timeout', type=int, default=300, help='等待登录的秒数，默认 300')
-    auth.add_parser('status', help='检查会话（不自动恢复），显示账号、凭据来源、浏览器和预约额度')
+    auth.add_parser('status', help='检查会话（不自动恢复），显示账号、凭据来源、自动登录方式和预约额度')
     auth.add_parser('logout', help='删除本机的会话、已保存的账号密码、登录浏览器资料和 WebVPN 会话')
     a = auth.add_parser('webvpn', help='学校 WebVPN 手机二维码认证；会话保存在当前电脑或 VPS')
     group = a.add_mutually_exclusive_group()
     group.add_argument('--status', action='store_true', help='读取后台扫码认证状态')
     group.add_argument('--refresh', action='store_true', help='生成新二维码，替换旧的待确认请求')
-    a = auth.add_parser('install-browser', help='安装自动登录使用的 Chromium')
+    a = auth.add_parser('install-browser', help='为可见窗口登录安装 Chromium（需浏览器支持）')
     a.add_argument('--with-deps', action='store_true', help='同时安装 Linux 系统依赖（可能需要管理员权限）')
     a = sub.add_parser('vpn', help='Linux 专用学校 SSL VPN，使用已有凭据自动重新登录')
     a.add_argument('action', choices=['run', 'route'], help='run 用于 systemd；route 用于 OpenConnect 钩子')
@@ -158,7 +157,6 @@ def run(args):
                 raise Error('学校 WebVPN 登录助手失败', 'WEBVPN_LOGIN_FAILED', result)
             return result
         if args.action == 'setup':
-            from .browser_auth import browser_name
             from .credentials import credential_file, store_credentials, store_credentials_file
             username = input('学校账号: ').strip()
             password = getpass.getpass('学校密码（输入隐藏）: ')
@@ -177,16 +175,15 @@ def run(args):
                 if answer not in ('y', 'yes'):
                     raise Error('未保存账号密码；也可用环境变量 BNUL_USERNAME/BNUL_PASSWORD 提供', 'CREDENTIALS_UNAVAILABLE') from None
                 storage = f'凭据文件 {store_credentials_file(username, password)}'
-            return {'configured': True, 'storage': storage, 'automaticLogin': True, 'browser': browser_name()}
+            return {'configured': True, 'storage': storage, 'automaticLogin': True}
         if args.action == 'logout':
             from .browser_auth import logout
             return logout()
         if args.action == 'status':
-            from .browser_auth import browser_name
             from .credentials import credential_source
             from datetime import datetime
             from zoneinfo import ZoneInfo
-            result = {'credentials': credential_source() or '未配置', 'browser': browser_name()}
+            result = {'credentials': credential_source() or '未配置'}
             if os.environ.get('BNUL_TOKEN'):
                 result['session'] = {'source': '环境变量 BNUL_TOKEN'}
             elif config_path().is_file():
@@ -195,6 +192,7 @@ def run(args):
             c = Client(no_proxy=args.no_proxy)
             c.auto_auth = False
             result['transport'] = c.network.mode
+            result['loginMethod'] = 'HTTP（无需浏览器）'
             try:
                 c.bootstrap()
                 info = c.api('user/getUserInfo')

@@ -367,7 +367,7 @@ def reconcile_actions(store, current):
 
 AUTH_CODES = {'20003', '401', 'LOCAL_AUTH_MISSING', 'SESSION_SIGNING_KEY_MISSING',
               'AUTH_INTERACTION_REQUIRED', 'AUTH_SETUP_REQUIRED', 'CREDENTIALS_UNAVAILABLE',
-              'WEBVPN_LOGIN_REQUIRED'}
+              'WEBVPN_LOGIN_REQUIRED', 'AUTH_REJECTED', 'AUTH_FLOW_CHANGED', 'BROWSER_SUPPORT_MISSING'}
 
 
 def check_cycle(args, store, clock=now_local, factory=Client):

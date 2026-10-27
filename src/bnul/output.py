@@ -9,7 +9,7 @@ LABELS = {'id': 'ID', 'message': '服务端提示', 'remark': '备注', 'code': 
           'createdDate': '时间', 'beginMinute': '开始', 'endMinute': '结束',
           'installed': '安装位置', 'authenticated': '已登录', 'configured': '已配置',
           'storage': '凭据存储', 'automaticLogin': '自动登录', 'saved': '已保存',
-          'path': '保存位置', 'credentials': '自动登录凭据', 'browser': '浏览器',
+          'path': '保存位置', 'credentials': '自动登录凭据', 'browser': '浏览器', 'loginMethod': '自动登录方式',
           'loggedOut': '已退出登录', 'credentialsRemoved': '已删除系统凭据库中的账号密码',
           'credentialError': '凭据删除失败', 'removed': '已删除文件',
           'environmentCredentialsPresent': '环境变量中仍有账号密码，自动登录仍可用',
@@ -201,7 +201,7 @@ def auth_status(data):
              fields([('账号', account.get('username'))]) + (f'（{who}）' if who else ''),
              fields([('会话', session.get('source') or session.get('path')), ('保存于', session.get('savedAt'))]),
              fields([('连接方式', {'direct': '直连', 'webvpn': '学校 WebVPN'}.get(data.get('transport'), data.get('transport'))),
-                     ('自动登录凭据', data.get('credentials')), ('浏览器', data.get('browser'))])]
+                     ('自动登录凭据', data.get('credentials')), ('自动登录方式', data.get('loginMethod'))])]
     if account:
         lines.append(fields([('单次最长预约', minutes(account.get('maxMinute'))), ('时间粒度', minutes(account.get('stepMinute'))),
                              ('违约次数', account.get('breachNum')), ('禁约至', account.get('blackTime')),

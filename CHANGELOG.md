@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0
+
+- Automatic login no longer needs a browser: it runs the school CAS flow over plain HTTP (RSA-encrypted credentials, `secondAuth` check, form submit, ticket redirect, `auth/cas` exchange) and saves the token with its login-issued signing key. Over WebVPN the same flow goes through the rewritten WebVPN URLs with the scanned WebVPN cookies. A full expired-session recovery plus query takes about one second direct and 20-30 seconds over WebVPN.
+- The HTTP login sends credentials only to `cas.bnu.edu.cn`, follows redirects only within the library and CAS hosts, and submits the password at most once per command. A captcha or second factor raises AUTH_INTERACTION_REQUIRED, a rejected password raises the new AUTH_REJECTED with the school's message, and an unexpected page raises AUTH_FLOW_CHANGED; none is retried. A stable private `device-id` next to the session stands in for the browser fingerprint.
+- Playwright is now the optional `bnul[browser]` extra, needed only for `auth login` (visible window for a captcha or second factor). Without it that command fails with BROWSER_SUPPORT_MISSING and the install command.
+- `auth setup` drops `--browser`; `auth login --browser` still saves the choice. `auth status` reports the automatic login method instead of the browser.
+- watch treats AUTH_REJECTED, AUTH_FLOW_CHANGED and BROWSER_SUPPORT_MISSING as login failures and backs off.
+- Document that an account has one active session: any new login (phone, web, another machine) invalidates the previous one.
+
 ## 0.5.5
 
 - `book --seat` accepts a seat label such as `008`, resolved from the seat list the command already fetches; unknown or ambiguous labels fail with SEAT_NOT_FOUND and nothing is submitted.

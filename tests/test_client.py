@@ -170,7 +170,7 @@ class AuthCommandTests(unittest.TestCase):
             self.assertEqual(main(['--json','auth','status']),0)
             self.assertFalse(cls.return_value.auto_auth)
         data=json.loads(out.getvalue())['data']
-        self.assertEqual((data['authenticated'],data['credentials'],data['browser'],data['reasonCode']),(False,'环境变量','chromium','LOCAL_AUTH_MISSING'))
+        self.assertEqual((data['authenticated'],data['credentials'],data['loginMethod'],data['reasonCode']),(False,'环境变量','HTTP（无需浏览器）','LOCAL_AUTH_MISSING'))
         self.assertNotIn('test-only',out.getvalue())
         with patch.dict(os.environ,{'BNUL_USERNAME':'student','BNUL_PASSWORD':'test-only'}), patch('bnul.cli.Client') as cls, patch('sys.stdout',new_callable=io.StringIO) as out:
             cls.return_value.network.mode='direct'
@@ -337,7 +337,7 @@ class InstallationTests(unittest.TestCase):
     def test_browser_installs_in_cli_python(self):
         from bnul.install import install_browser
         import sys
-        with patch('bnul.install.subprocess.run') as run:
+        with patch('bnul.install.subprocess.run') as run, patch('importlib.util.find_spec',return_value=object()):
             run.return_value.returncode=0
             install_browser(True)
             self.assertEqual(run.call_args.args[0],[sys.executable,'-m','playwright','install','--with-deps','chromium'])

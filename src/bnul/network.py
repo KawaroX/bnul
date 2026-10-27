@@ -4,12 +4,13 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, build_opener, ProxyHandler, HTTPCookieProcessor, HTTPRedirectHandler
 from .client import Error, NoRedirect
 
 VPN = 'https://webvpn.bnu.edu.cn'
 LIBRARY = 'libseat.bnu.edu.cn'
+ROUTED = (LIBRARY, 'cas.bnu.edu.cn')
 
 
 def settings_path():
@@ -127,6 +128,24 @@ class Network:
         if parsed.netloc == 'webvpn.bnu.edu.cn' and parsed.path.startswith(prefix + '/'):
             return parsed.path[len(prefix):]
         return None
+
+    def wire(self, url):
+        # Official URL -> the URL actually requested on this transport.
+        if self.mode == 'direct':
+            return url
+        parsed = urlsplit(url)
+        return VPN + route_host(parsed.netloc) + urlunsplit(('', '', parsed.path or '/', parsed.query, ''))
+
+    def official(self, url):
+        # Inverse of wire() for the school hosts WebVPN serves; anything else is returned unchanged.
+        parsed = urlsplit(url)
+        if self.mode == 'direct' or parsed.scheme != 'https' or parsed.netloc != 'webvpn.bnu.edu.cn':
+            return url
+        for host in ROUTED:
+            prefix = route_host(host)
+            if parsed.path == prefix or parsed.path.startswith(prefix + '/'):
+                return urlunsplit(('https', host, parsed.path[len(prefix):] or '/', parsed.query, ''))
+        return url
 
     def cas_login(self, url):
         parsed = urlsplit(url)

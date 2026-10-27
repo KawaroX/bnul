@@ -5,6 +5,10 @@ import time
 from urllib.parse import urlparse
 from .client import Client, Error, config_path, save_token
 
+BROWSER_MISSING = ('未安装浏览器支持。可见窗口登录（auth login）需要它：'
+                   "uv tool install --force 'bnul[browser] @ git+https://github.com/KawaroX/bnul.git'，"
+                   '再运行 bnul auth install-browser 安装 Chromium；已装 Chrome 或 Edge 时可改用 --browser chrome/msedge，免装 Chromium')
+
 
 def session_request_token(url, headers, network=None):
     parsed = urlparse(url)
@@ -122,7 +126,7 @@ def browser_login(no_proxy=False, timeout=300, headless=False, credentials=None)
     try:
         from playwright.sync_api import sync_playwright, Error as BrowserError
     except ImportError:
-        raise Error('请先安装浏览器支持：python -m pip install -e ".[browser]"') from None
+        raise Error(BROWSER_MISSING, 'BROWSER_SUPPORT_MISSING') from None
     profile = (webvpn_profile() if network.mode == 'webvpn' else config_path().parent) / 'browser-profile'
     profile.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(profile, 0o700)

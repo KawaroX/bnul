@@ -15,12 +15,11 @@ uv tool update-shell
 
 ```sh
 bnul --help
-bnul auth install-browser
 bnul auth setup
 bnul current
 ```
 
-`auth setup` 只需配置一次学校账号密码；日常命令会在会话失效后后台自动登录。浏览器使用独立资料，不读取个人浏览器数据。
+`auth setup` 只需配置一次学校账号密码；日常命令会在会话失效后后台自动登录。自动登录直接用 HTTP 走学校统一认证（CAS），不需要浏览器：直连通常不到 1 秒，经 WebVPN 约 20–30 秒（WebVPN 每个请求都较慢）。
 
 也可使用 [pipx](https://pipx.pypa.io/stable/installation/)：
 
@@ -29,9 +28,18 @@ pipx install git+https://github.com/KawaroX/bnul.git
 pipx ensurepath
 ```
 
-重开终端后运行同样的 `bnul` 命令。以上命令适用于 Windows PowerShell、macOS 和 Linux。无需填写 Python 或 CLI 绝对路径。若需要固定版本，将安装 URL 改为 `git+https://github.com/KawaroX/bnul.git@v0.5.5`。
+重开终端后运行同样的 `bnul` 命令。以上命令适用于 Windows PowerShell、macOS 和 Linux。无需填写 Python 或 CLI 绝对路径。若需要固定版本，将安装 URL 改为 `git+https://github.com/KawaroX/bnul.git@v0.6.0`。
 
-Linux 缺少浏览器系统库时执行 `bnul auth install-browser --with-deps`，系统依赖安装可能要求管理员权限。默认使用上述命令安装的 Chromium；已安装 Chrome/Edge 时可用 `bnul auth setup --browser chrome`（或 `msedge`）改用它，选择会保存，之后的自动登录沿用。
+### 浏览器支持（可选）
+
+只有 `bnul auth login` 需要浏览器，用于学校要求验证码或二次认证时在可见窗口人工完成；日常使用和服务器部署都不需要。需要时安装带浏览器支持的版本：
+
+```sh
+uv tool install --force 'bnul[browser] @ git+https://github.com/KawaroX/bnul.git'
+bnul auth install-browser            # Linux 缺系统库时加 --with-deps（可能需要管理员权限）
+```
+
+pipx 用户使用 `pipx install --force 'bnul[browser] @ git+https://github.com/KawaroX/bnul.git'`。已安装 Chrome 或 Edge 时可跳过 `install-browser`，改用 `bnul auth login --browser chrome`（或 `msedge`），选择会保存。浏览器使用独立资料，不读取个人浏览器数据。
 
 ## 预约临期监控（0.5.2）
 
@@ -61,30 +69,32 @@ skill 随安装包发布，不依赖源码目录；只调用 PATH 中的 `bnul`�
 
 | 命令 | 用途 |
 |---|---|
-| `bnul auth setup` | 一次配置学校账号密码到系统凭据库；可加 `--browser chrome/msedge/chromium` |
-| `bnul auth login` | 可见浏览器登录，处理验证码、二次认证；可加 `--browser` |
-| `bnul auth status` | 检查当前会话（不自动恢复），显示账号、会话保存时间、连接方式、自动登录凭据来源、浏览器和预约额度 |
+| `bnul auth setup` | 一次配置学校账号密码到系统凭据库 |
+| `bnul auth login` | 可见浏览器登录，处理验证码、二次认证；可加 `--browser chrome/msedge/chromium`（需浏览器支持） |
+| `bnul auth status` | 检查当前会话（不自动恢复），显示账号、会话保存时间、连接方式、自动登录凭据来源、自动登录方式和预约额度 |
 | `bnul auth logout` | 删除本机会话、已保存的账号密码（凭据库和凭据文件）、登录浏览器资料和 WebVPN 会话 |
 | `bnul auth webvpn` | 学校 WebVPN 手机扫码，见下文 |
-| `bnul auth install-browser` | 安装自动登录使用的 Chromium |
+| `bnul auth install-browser` | 为可见窗口登录安装 Chromium（需浏览器支持） |
 
 自动登录的账号密码按顺序读取，配置一种即可：环境变量 `BNUL_USERNAME` + `BNUL_PASSWORD`（或用 `BNUL_CREDENTIAL_ENV` 指向已有 dotenv 文件，只读这两个键），然后是 `auth setup` 保存的凭据。`auth setup` 优先存入系统凭据库；凭据库不可用（如无 Secret Service 的 VPS）时，经你确认后改存 `~/.config/bnul/credentials.env`，明文、仅当前用户可读（0600），之后重新存入凭据库时自动删除该文件。用环境变量时不需要运行任何登录命令，业务命令会在会话失效时自动登录。
 
 `--json`、`--no-proxy`、`--transport` 可放在子命令前后，例如 `bnul auth login --browser chrome --no-proxy`。
 
-普通业务命令自动处理明确的会话失效，后台恢复后重试查询一次。无需每分钟登录，也无需事先知道会话期限。样例 URL JWT 的 60 秒期限与 API 会话期限不同。学校要求验证码/二次认证或密码错误时才需要人工处理；每条命令最多恢复一次、提交密码一次，避免循环登录。setup 表示已保存，实际有效性以学校认证为准。
+普通业务命令自动处理明确的会话失效，后台恢复后重试查询一次。无需每分钟登录，也无需事先知道会话期限。样例 URL JWT 的 60 秒期限与 API 会话期限不同。学校要求验证码或二次认证（`AUTH_INTERACTION_REQUIRED`）、拒绝账号密码（`AUTH_REJECTED`）时才需要人工处理；每条命令最多恢复一次、提交密码一次，避免失败次数累积触发验证码。setup 表示已保存，实际有效性以学校认证为准。
+
+同一账号同一时间只有一个有效会话：任何一处新登录都会让此前的会话失效。手机或网页登录、另一台电脑或 VPS 上的 bnul 自动登录后，本机下次查询会再自动登录一次，同时把对方顶掉。运行 watch 的机器尽量不要和其他设备频繁交替使用同一账号。
 
 macOS 使用 Keychain，Windows 使用 Credential Manager，Linux 使用 Secret Service（需要已启动且解锁的服务与会话 D-Bus）。无桌面服务器可通过秘密管理器注入 `BNUL_USERNAME` 和 `BNUL_PASSWORD`，无需系统凭据库；程序不将其写入文件。两者须同时设置，优先于系统库。后台模式不需要显示器，但遇到人工验证仍需要可见桌面。
 
 会话文件默认为 `~/.config/bnul/session.json`，用 `BNUL_CONFIG` 可改变位置。设置 `BNUL_TOKEN` 时优先使用该 token，禁用自动恢复以免覆盖指定身份。密码不写入 JSON 或日志。auth logout 只清除本机数据，不向学校注销；环境变量中的账号密码无法由 CLI 删除，结果会提示仍存在，此时下次业务命令仍会自动登录。
 
-从 0.4.1 起，支持学校将签名密钥改为通过登录响应的 `userInfoRes.hmacKey` 下发。CLI 会将密钥与对应 token 一起保存，仍按原有 AES 算法解密并为每次请求生成签名；不会跳过签名校验。旧会话缺少密钥时，普通查询自动重新登录一次。仅导入 token 或显式设置 `BNUL_TOKEN` 而没有配对密钥时会返回 `SESSION_SIGNING_KEY_MISSING`，请使用正常浏览器登录保存完整会话。
+从 0.4.1 起，支持学校将签名密钥改为通过登录响应的 `userInfoRes.hmacKey` 下发。CLI 会将密钥与对应 token 一起保存，仍按原有 AES 算法解密并为每次请求生成签名；不会跳过签名校验。旧会话缺少密钥时，普通查询自动重新登录一次。仅导入 token 或显式设置 `BNUL_TOKEN` 而没有配对密钥时会返回 `SESSION_SIGNING_KEY_MISSING`，请让 CLI 自动登录或运行 `bnul auth login` 保存完整会话。
 
 ## 常在线 VPS 和校外网络
 
 Linux 无桌面服务器可使用学校官方 SSL VPN 账号密码登录并由 systemd 自动重连，且只将选座与 CAS 两个学校域名通过该连接。服务需要学校单独开通和系统管理员部署，安装 CLI 不会自动改变网络。配置、服务模板和验证步骤见 [Linux 部署](deploy/linux/README.md)。
 
-另支持学校官方 WebVPN 微信认证，登录会话与浏览器保存在运行 bnul 的当前电脑或 VPS：
+另支持学校官方 WebVPN 微信认证，登录会话保存在运行 bnul 的当前电脑或 VPS。扫码只用于 WebVPN 本身；之后图书馆会话失效时，CLI 经 WebVPN 用 HTTP 自动登录 CAS，不需要浏览器。学校不允许从校内网络登录 WebVPN（返回"您正从校内访问"）：
 
 ```sh
 bnul --json auth webvpn            # 返回二维码路径及 MEDIA 行，后台等待本人确认
@@ -95,7 +105,7 @@ bnul --transport webvpn current
 
 默认 `direct` 保持原有行为。`--transport auto` / `BNUL_TRANSPORT=auto` 在业务请求前无凭据检测直连，不通时使用本机 WebVPN；不会在结果未知的写请求之后切换连接并重放。`bnul-vpn-login` 是扫码助手的兼容入口，输出原始状态 JSON。WebVPN 本身的微信登录不冒充为密码自动登录；有权限的 SSL VPN 连接及选座 CAS 会话使用账号密码自动恢复。
 
-可在 `~/.config/bnul/settings.json` 配置 `transport`、`browser`、`browser_executable`、`webvpn_profile`、`qr_directory`；对应环境变量分别是 `BNUL_TRANSPORT`、`BNUL_BROWSER`、`BNUL_BROWSER_EXECUTABLE`、`BNUL_WEBVPN_PROFILE`、`BNUL_QR_DIR`，环境变量优先。`browser` 由 `auth setup/login --browser` 写入，设置后优先于 `browser_executable`。`BNUL_SETTINGS` 可指定设置文件。已有独立 Chrome 可以直接复用可执行文件，不读取个人浏览器资料。
+可在 `~/.config/bnul/settings.json` 配置 `transport`、`browser`、`browser_executable`、`webvpn_profile`、`qr_directory`；对应环境变量分别是 `BNUL_TRANSPORT`、`BNUL_BROWSER`、`BNUL_BROWSER_EXECUTABLE`、`BNUL_WEBVPN_PROFILE`、`BNUL_QR_DIR`，环境变量优先。`browser` 由 `auth login --browser` 写入，设置后优先于 `browser_executable`。`BNUL_SETTINGS` 可指定设置文件。已有独立 Chrome 可以直接复用可执行文件，不读取个人浏览器资料。
 
 ## 楼馆、楼层与房间别名
 
@@ -247,19 +257,18 @@ bnul stop -e
 
 成功预约不等于签到，按服务端 message 完成签到。RESERVE 是待签到，CHECK_IN 是使用中，AWAY 是暂离，STOP 是结束。普通命令不自动取消原预约；显式启用 watch --execute 后按[监控规则](deploy/linux/WATCH.md)处理临期预约，不绕过验证码。写操作先检查会话；结果不明时，选择 current/recent 中最相关的一项查询核实，不自动重放。服务端 stop 无 ID 参数，本地 ID 检查无法完全消除并发更换预约的竞态。
 
-`--json` 输出结构为 `ok/data` 或 `ok/error/code/data`，失败退出码非零。全局参数放在子命令前；系统代理不可用时加 `--no-proxy`，例如 `bnul --no-proxy current`。TLS 校验始终开启。
+`--json` 输出结构为 `ok/data` 或 `ok/error/code/data`，失败退出码非零。全局参数可放在子命令前后；系统代理不可用时加 `--no-proxy`，例如 `bnul --no-proxy current`。TLS 校验始终开启。
 
 ## 更新与卸载
 
 ```sh
 uv tool upgrade bnul
-bnul auth install-browser
 bnul skill install
 # 卸载
 uv tool uninstall bnul
 ```
 
-pipx 用户使用 `pipx upgrade bnul` / `pipx uninstall bnul`。浏览器库升级后可能需重新安装 Chromium。卸载 CLI 不删除凭据、浏览器资料或 skill；如需清除密码和会话，先运行 `bnul auth logout`。
+pipx 用户使用 `pipx upgrade bnul` / `pipx uninstall bnul`。安装了浏览器支持时，浏览器库升级后可能需重新运行 `bnul auth install-browser`。卸载 CLI 不删除凭据、浏览器资料或 skill；如需清除密码和会话，先运行 `bnul auth logout`。
 
 ## 开发与验证
 

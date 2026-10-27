@@ -32,6 +32,9 @@ class SessionSigningTests(unittest.TestCase):
         self.env = patch.dict(os.environ, {'BNUL_CONFIG': self.tmp.name + '/session.json'})
         self.env.start()
         self.addCleanup(self.env.stop)
+        guard = patch('bnul.http_auth.Session.send', side_effect=AssertionError('tests must not reach the school'))
+        guard.start()
+        self.addCleanup(guard.stop)
 
     def test_cached_login_key_is_used_and_signed_request_sent(self):
         save_token('session', encrypted_key())
@@ -58,10 +61,10 @@ class SessionSigningTests(unittest.TestCase):
         save_token('old')
         c = Client()
         c.auto_auth = True
-        def login(**kwargs):
+        def login(*args, **kwargs):
             save_token('fresh', encrypted_key())
         with patch.object(c, 'request', side_effect=lambda *a, **k: config()), \
-                patch('bnul.browser_auth.browser_login', side_effect=login) as login_mock:
+                patch('bnul.http_auth.http_login', side_effect=login) as login_mock:
             c.bootstrap()
         login_mock.assert_called_once()
         self.assertEqual(c.token, 'fresh')
@@ -72,7 +75,7 @@ class SessionSigningTests(unittest.TestCase):
         c = Client()
         c.auto_auth = True
         with patch.object(c, 'request', side_effect=lambda *a, **k: config()), \
-                patch('bnul.browser_auth.browser_login') as login:
+                patch('bnul.http_auth.http_login') as login:
             with self.assertRaises(Error) as err:
                 c.bootstrap()
         self.assertEqual(err.exception.code, 'SESSION_SIGNING_KEY_MISSING')
@@ -99,6 +102,7 @@ class SessionSigningTests(unittest.TestCase):
             self.assertIsNone(login_response_session(bad, payload))
         self.assertIsNone(login_response_session(url, {**payload, 'status': False}))
 
+    @unittest.skipUnless(__import__('importlib.util', fromlist=['find_spec']).find_spec('playwright'), 'optional browser dependency')
     def test_browser_validates_login_token_and_key_before_saving(self):
         pw = MagicMock()
         context = pw.chromium.launch_persistent_context.return_value

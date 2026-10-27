@@ -2,11 +2,10 @@
 
 学校 WebVPN 微信登录与传统 SSL VPN 账号密码登录是两个不同入口。SSL VPN 必须先在北师大微信门户 → 信息网络中心 → SSL VPN 申请中开通；不尝试绕过学校权限。学校官方介绍：https://vpn.bnu.edu.cn/in.php。
 
-先安装正式版本 bnul 和浏览器，以及系统 `openconnect`、`iproute2`。不要在命令行或仓库填写密码。
+先安装正式版本 bnul，以及系统 `openconnect`、`iproute2`。不要在命令行或仓库填写密码。自动登录不需要浏览器，无论走 SSL VPN 直连还是 WebVPN。
 
 ```sh
-uv tool install git+https://github.com/KawaroX/bnul.git@v0.5.2
-bnul auth install-browser --with-deps
+uv tool install git+https://github.com/KawaroX/bnul.git@v0.6.0
 sudo apt-get install --no-install-recommends openconnect iproute2
 ```
 
