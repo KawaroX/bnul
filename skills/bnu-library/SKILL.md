@@ -170,8 +170,9 @@ recommendations 为空且 searchExhausted=false 时，只能说“已检查的�
 
 - 需要预览或缺少目标预约 ID 时，直接运行对应的 `bnul cancel` / `bnul stop` 预览；成功结果已含当前预约 ID 和状态（JSON 的 `data.current.id` / `data.current.status`），无需先查 `current`。只有无法依据用户请求及已有信息确定应预览 `cancel` 还是 `stop` 时，才查一次 `current`。
 - 本次流程已有目标预约 ID、状态且用户已授权时，可直接 `bnul cancel --execute --expect-id MAKE_ID` 或 `bnul stop --execute --expect-id MAKE_ID`。CLI 执行前会重新读取并校验当前预约，无需再加预览或 `current`。
+- 用户已授权释放“当前预约”、但本次流程没有 ID 时，可省略 `--expect-id`（如 `bnul stop -e`；`-e`/`--exe` 等同 `--execute`），CLI 使用同一命令内读取的当前预约 ID。
 
-两个命令不会自动互相转换，执行需匹配当前预约 ID。状态/ID 不匹配错误不一定带回完整预约，不能凭空提取 ID，也不要自动改成新 ID 重试。沿用用户已有取消/结束授权，不重复索取；仅提供抓包或要求开发功能不构成操作真实预约的授权。
+CLI 按实时状态决定实际操作：命令与状态不符时自动改用 cancel 或 stop，结果注明 `switched`/`requestedAction`/`action`，向用户说明实际执行的是哪一项，不要因此重跑另一个命令。指定 `--expect-id` 时须匹配当前预约 ID。状态/ID 不匹配错误不一定带回完整预约，不能凭空提取 ID，也不要自动改成新 ID 重试。沿用用户已有取消/结束授权，不重复索取；仅提供抓包或要求开发功能不构成操作真实预约的授权。
 
 取消成功的数字 data 原样保留；须知说明每日最多取消 3 次。取消时间限制以服务端结果为准。`current` 返回空字符串表示没有当前预约。如果用户要求“结束当前并重约”，按实时状态选择 cancel/stop，成功后重新查询座位和时段再 book；不保证无冷却或一定能重约。写请求可能已提交，但因超时、断连等无法判定结果时，选择 `current` 或 `recent` 中最相关的一项核实；确有缺失证据时再用 `history` 或 `life MAKE_ID`，不要按清单全部查询。仅 `current` 为空不能证明某次写操作成功。核实仍失败或证据不足时如实说明结果未知并停止，不循环查询、不重复提交，也不在取消/结束结果不明时继续重约。
 

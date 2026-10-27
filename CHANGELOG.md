@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `cancel`/`stop --execute` no longer require `--expect-id`; when omitted, the current reservation read in the same command is the target. A supplied ID is still verified.
+- `cancel`/`stop` follow the live status: RESERVE is cancelled and CHECK_IN/AWAY is stopped, whichever command was typed. A switch is reported in preview, text and JSON (`switched`, `requestedAction`, `action`, raw `result`); other states still fail with INVALID_RESERVATION_STATE.
+- Add `-e` / `--exe` as aliases for `--execute` on `book`, `cancel`, `stop` and `watch`.
+
 ## 0.5.3
 
 - Add fixed bN building aliases and building-scoped fN floor aliases, sharing a single directory request when resolving both. Require an explicit room outside the main library for seats/book.

@@ -213,6 +213,12 @@ def format_text(args, data):
         return life(args, data)
     if command in ('book', 'cancel', 'stop'):
         heading = '已提交请求；以下为服务端结果：' if args.execute else '操作预览（未提交）：'
+        if isinstance(data, dict) and data.get('switched'):
+            names = {'cancel': 'cancel（取消预约）', 'stop': 'stop（结束使用）'}
+            verb = '已自动改用' if args.execute else '执行时将改用'
+            heading = f'当前预约状态不适用 {data["requestedAction"]}，{verb} {names[data["action"]]}。\n' + heading
+            if args.execute:
+                data = data['result']
         payload = data.get('current', data) if isinstance(data, dict) else data
         return heading + '\n' + (reservation_list(payload) or '服务端未返回详情。')
     return plain(data) or '完成。'

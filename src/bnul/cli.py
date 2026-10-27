@@ -46,7 +46,7 @@ def parser():
     a.add_argument('action', choices=['install'])
     a.add_argument('--dest', help='目标 skill 文件夹；默认安装到 Codex skills')
     a = sub.add_parser('watch', help='预约临期监控；默认预览，Linux/macOS')
-    a.add_argument('--execute', action='store_true', help='临期取消/结束并尝试重约')
+    a.add_argument('-e', '--exe', '--execute', dest='execute', action='store_true', help='临期取消/结束并尝试重约')
     mode = a.add_mutually_exclusive_group()
     mode.add_argument('--once', action='store_true', help='白天检查一次后退出；夜间返回休眠状态')
     mode.add_argument('--status', action='store_true', help='只读本地监控状态和心跳')
@@ -64,9 +64,9 @@ def parser():
     a = sub.add_parser('life', help='预约变更记录')
     a.add_argument('make_id', type=identifier)
     for name, description in [('stop', '结束已签到的当前使用'), ('cancel', '取消未签到的当前预约')]:
-        a = sub.add_parser(name, help=description + '；默认仅预览')
-        a.add_argument('--execute', action='store_true')
-        a.add_argument('--expect-id', type=identifier, help='执行时必须指定预期的当前预约 ID')
+        a = sub.add_parser(name, help=description + '；状态不符时自动改用另一操作；默认仅预览')
+        a.add_argument('-e', '--exe', '--execute', dest='execute', action='store_true', help='实际提交；默认仅预览')
+        a.add_argument('--expect-id', type=identifier, help='预期的当前预约 ID；指定时须一致，省略时使用本次读取的当前预约')
     for name, description in [('history', '分页查询预约历史'), ('breach', '分页查询违约记录')]:
         a = sub.add_parser(name, help=description)
         a.add_argument('--page', type=int, default=1, help='页码，从 1 开始')
@@ -104,7 +104,7 @@ def parser():
         if name != 'times':
             a.add_argument('--end', type=minute, required=name != 'rooms')
         if name == 'book':
-            a.add_argument('--execute', action='store_true', help='实际提交一次预约')
+            a.add_argument('-e', '--exe', '--execute', dest='execute', action='store_true', help='实际提交一次预约')
     return p
 
 
@@ -273,20 +273,21 @@ def run(args):
         if not isinstance(current, dict) or not current.get('id'):
             raise Error('没有当前预约可操作', 'NO_CURRENT_RESERVATION')
         make_id = identifier(str(current['id']))
-        if args.execute and args.expect_id != make_id:
+        # Without --expect-id the ID read just above is the target; a given one must still match.
+        if args.execute and args.expect_id is not None and args.expect_id != make_id:
             raise Error('当前预约 ID 与 --expect-id 不一致，未执行操作', 'RESERVATION_CHANGED')
         status = current.get('status')
-        if args.command == 'stop' and status == 'RESERVE':
-            raise Error('预约未签到，请使用 cancel 取消预约；stop 仅用于结束使用', 'INVALID_RESERVATION_STATE')
-        if args.command == 'cancel' and status in ('CHECK_IN', 'AWAY'):
-            raise Error('预约已签到，请使用 stop 结束使用；cancel 仅用于未签到预约', 'INVALID_RESERVATION_STATE')
-        allowed = ('RESERVE',) if args.command == 'cancel' else ('CHECK_IN', 'AWAY')
-        if status not in allowed:
+        # Status alone decides how to release: unsigned is cancelled, signed-in use is stopped.
+        action = {'RESERVE': 'cancel', 'CHECK_IN': 'stop', 'AWAY': 'stop'}.get(status)
+        if action is None:
             raise Error('当前预约状态不支持此操作', 'INVALID_RESERVATION_STATE', {'status': status})
+        switched = {'requestedAction': args.command, 'switched': True} if action != args.command else {}
         if not args.execute:
-            return {'submitted': False, 'action': args.command, 'current': current}
-        path = 'make/cancel/' + make_id if args.command == 'cancel' else 'make/stop'
-        return c.api(path)
+            return {'submitted': False, 'action': action, **switched, 'current': current}
+        path = 'make/cancel/' + make_id if action == 'cancel' else 'make/stop'
+        result = c.api(path)
+        # Keep the raw server result unless the action changed, which the caller must see.
+        return {'action': action, 'makeId': make_id, **switched, 'result': result} if switched else result
 
 
 def main(argv=None):

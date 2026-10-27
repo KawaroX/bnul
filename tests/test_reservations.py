@@ -34,25 +34,59 @@ class ReservationTests(unittest.TestCase):
             self.assertEqual(data['code'], 'NO_CURRENT_RESERVATION')
             self.assertEqual(len(calls), 1)
 
-    def test_missing_or_changed_id(self):
-        for extra in ([], ['--expect-id', '456']):
-            code, data, calls = self.invoke(['cancel', '--execute'] + extra, {'id': '123', 'status': 'RESERVE'})
-            self.assertEqual(code, 1)
-            self.assertEqual(data['code'], 'RESERVATION_CHANGED')
-            self.assertEqual(len(calls), 1)
+    def test_changed_id(self):
+        code, data, calls = self.invoke(['cancel', '--execute', '--expect-id', '456'], {'id': '123', 'status': 'RESERVE'})
+        self.assertEqual(code, 1)
+        self.assertEqual(data['code'], 'RESERVATION_CHANGED')
+        self.assertEqual(len(calls), 1)
+
+    def test_execute_without_id_uses_current(self):
+        code, data, calls = self.invoke(['cancel', '--execute'], {'id': '123', 'status': 'RESERVE'})
+        self.assertEqual(code, 0)
+        self.assertEqual(data['data'], 7)
+        self.assertEqual(calls, [call('user/currentUseMake'), call('make/cancel/123')])
+        code, _, calls = self.invoke(['stop', '--execute'], {'id': '123', 'status': 'AWAY'})
+        self.assertEqual(code, 0)
+        self.assertEqual(calls[-1], call('make/stop'))
 
     def test_states_and_routing(self):
-        for command, status, hint in [('cancel', 'CHECK_IN', 'stop'), ('cancel', 'AWAY', 'stop'), ('stop', 'RESERVE', 'cancel'), ('cancel', 'STOP', None), ('stop', 'UNKNOWN', None)]:
+        for command, status, action, path in [('cancel', 'RESERVE', 'cancel', 'make/cancel/123'),
+                                              ('stop', 'CHECK_IN', 'stop', 'make/stop'),
+                                              ('stop', 'AWAY', 'stop', 'make/stop')]:
             code, data, calls = self.invoke([command, '--execute', '--expect-id', '123'], {'id': '123', 'status': status})
+            self.assertEqual(code, 0)
+            self.assertEqual(data['data'], 7)
+            self.assertEqual(calls[-1], call(path))
+        for command, status in [('cancel', 'STOP'), ('stop', 'UNKNOWN'), ('stop', None)]:
+            code, data, calls = self.invoke([command, '--execute'], {'id': '123', 'status': status})
             self.assertEqual(code, 1)
             self.assertEqual(data['code'], 'INVALID_RESERVATION_STATE')
-            if hint:
-                self.assertIn(hint, data['error'])
             self.assertEqual(len(calls), 1)
-        for status in ('CHECK_IN', 'AWAY'):
-            code, _, calls = self.invoke(['stop', '--execute', '--expect-id', '123'], {'id': '123', 'status': status})
+
+    def test_wrong_command_switches_by_status(self):
+        for command, status, action, path in [('stop', 'RESERVE', 'cancel', 'make/cancel/123'),
+                                              ('cancel', 'CHECK_IN', 'stop', 'make/stop'),
+                                              ('cancel', 'AWAY', 'stop', 'make/stop')]:
+            code, data, calls = self.invoke([command], {'id': '123', 'status': status})
             self.assertEqual(code, 0)
-            self.assertEqual(calls[-1], call('make/stop'))
+            self.assertEqual(data['data']['action'], action)
+            self.assertEqual(data['data']['requestedAction'], command)
+            self.assertTrue(data['data']['switched'])
+            self.assertEqual(calls, [call('user/currentUseMake')])
+            code, data, calls = self.invoke([command, '--execute'], {'id': '123', 'status': status})
+            self.assertEqual(code, 0)
+            self.assertEqual(data['data'], {'action': action, 'makeId': '123', 'requestedAction': command,
+                                            'switched': True, 'result': 7})
+            self.assertEqual(calls[-1], call(path))
+        code, data, calls = self.invoke(['stop', '--execute', '--expect-id', '456'], {'id': '123', 'status': 'RESERVE'})
+        self.assertEqual(data['code'], 'RESERVATION_CHANGED')
+        self.assertEqual(len(calls), 1)
+
+    def test_execute_short_flags(self):
+        for flag in ('-e', '--exe'):
+            code, data, calls = self.invoke(['cancel', flag], {'id': '123', 'status': 'RESERVE'})
+            self.assertEqual(code, 0)
+            self.assertEqual(calls[-1], call('make/cancel/123'))
 
     def test_cancel_error_preserved(self):
         code, data, calls = self.invoke(['cancel', '--execute', '--expect-id', '123'], {'id': '123', 'status': 'RESERVE'}, Error('取消时间限制', 500))

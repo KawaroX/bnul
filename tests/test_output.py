@@ -59,6 +59,17 @@ class OutputTests(unittest.TestCase):
         self.assertIn('服务端结果：\n7', text)
         self.assertNotIn('积分', text)
 
+    def test_switch_is_announced(self):
+        preview = {'submitted': False, 'action': 'cancel', 'requestedAction': 'stop', 'switched': True,
+                   'current': {'id': '123', 'status': 'RESERVE'}}
+        text = self.invoke(['stop'], preview)[1]
+        for expected in ['不适用 stop', '执行时将改用 cancel', '未提交', '待签到']:
+            self.assertIn(expected, text)
+        done = {'action': 'stop', 'makeId': '123', 'requestedAction': 'cancel', 'switched': True, 'result': 7}
+        text = self.invoke(['cancel', '-e'], done)[1]
+        self.assertIn('已自动改用 stop', text)
+        self.assertIn('服务端结果：\n7', text)
+
     def test_empty_and_scalar_results(self):
         for data in [None, '', {}, []]:
             self.assertIn('没有当前预约', self.invoke(['current'], data)[1])

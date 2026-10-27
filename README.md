@@ -232,9 +232,12 @@ bnul cancel --execute --expect-id 预约ID
 # 已签到（CHECK_IN / AWAY）：结束使用
 bnul stop
 bnul stop --execute --expect-id 预约ID
+
+# 省略 --expect-id：直接操作本次读取到的当前预约；-e / --exe 等同 --execute
+bnul stop -e
 ```
 
-从 0.3.2 起支持 `cancel`、`history` 和 `breach`。取消和结束均默认预览，执行必须指定匹配的 `--expect-id`；状态不符时提示正确命令，不自动切换操作。`history`/`breach` 保留服务端 `list`/`count`，每次只查询指定的一页；违约是否已过期不由 CLI 推断。
+从 0.3.2 起支持 `cancel`、`history` 和 `breach`。取消和结束均默认预览；`book`、`cancel`、`stop`、`watch` 的 `--execute` 均可简写为 `-e` 或 `--exe`。指定 `--expect-id` 时必须与当前预约一致，省略时使用同一命令内刚读取的当前预约 ID。cancel 与 stop 按实时状态执行：未签到（RESERVE）一律取消，已签到（CHECK_IN/AWAY）一律结束使用；命令与状态不符时自动改用正确操作，预览和结果会注明，JSON 带 `switched`、`requestedAction`、`action` 字段，执行结果原值放在 `result`。其他状态（如 STOP）报错，不执行。`history`/`breach` 保留服务端 `list`/`count`，每次只查询指定的一页；违约是否已过期不由 CLI 推断。
 
 取消成功返回的数字保留原值；已核实官网前端将它显示为当天剩余取消次数。取消时间限制由服务端判定，不凭 `cancelMinute` 字段名推导。取消后 `current` 可能返回空字符串，表示没有当前预约。需要重新预约时重新校验可选时段，不保证座位仍可用或一定允许重约。
 
