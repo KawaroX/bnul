@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Skill: on AUTH_REJECTED, act on the school's stated reason instead of stopping outright. A wrong-password message sends the user to `auth setup`; any other or unclear reason gets one rerun of the original command before handing off to `auth login`.
+
 ## 0.6.0
 
 - Automatic login no longer needs a browser: it runs the school CAS flow over plain HTTP (RSA-encrypted credentials, `secondAuth` check, form submit, ticket redirect, `auth/cas` exchange) and saves the token with its login-issued signing key. Over WebVPN the same flow goes through the rewritten WebVPN URLs with the scanned WebVPN cookies. A full expired-session recovery plus query takes about one second direct and 20-30 seconds over WebVPN.

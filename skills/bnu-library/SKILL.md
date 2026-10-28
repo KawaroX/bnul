@@ -68,7 +68,7 @@ description: 使用 bnul CLI 查询与预约北京师范大学图书馆自习座
 | --- | --- |
 | AUTH_SETUP_REQUIRED | 让用户在自己的终端运行 `bnul auth setup`（隐藏输入密码）；服务器上也可注入环境变量，见登录说明 |
 | AUTH_INTERACTION_REQUIRED | 需要验证码或二次认证：让用户运行 `bnul auth login`，在可见窗口完成 |
-| AUTH_REJECTED | 学校拒绝账号密码：转述学校的提示；密码已改时让用户在自己的终端运行 `bnul auth setup`。不重试 |
+| AUTH_REJECTED | 学校拒绝了这次登录，按错误信息里学校给的原因处理：提示账号或密码错误时，让用户在自己的终端运行 `bnul auth setup` 更新密码后再试；其他原因或原因不明时，重新运行原命令一次，仍失败再转述原因，并让用户运行 `bnul auth login` 在官网页面查看 |
 | WEBVPN_LOGIN_REQUIRED | 按 [WebVPN 说明](references/webvpn.md) 发送二维码 |
 | SEAT_NOT_FOUND | 编号不在该房间：核对房间，必要时用 `bnul seats --room …` 查看 |
 | TIME_UNAVAILABLE | 该时间不可选：说明情况并给出替代建议 |
